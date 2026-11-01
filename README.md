@@ -1,51 +1,60 @@
-# PingDesk — implementation scaffold
+# PingDesk
 
-A cloud-hosted, notification-only email-to-WhatsApp alert service. This repository is a development scaffold; live integrations require your own Google and Meta credentials, provider verification and real sample emails.
+Cloud-hosted, notification-only bridge that watches an authorized Gmail inbox for Fiverr notification emails and sends a WhatsApp alert through the official Meta WhatsApp Cloud API. Runs entirely in the cloud — the customer's computer can be off.
 
-## Current implementation
-- Next.js dashboard shell
-- Supabase server and service clients
-- Google OAuth start/callback routes with signed state cookie
-- Gmail API client for history/list/get operations
-- AES-256-GCM token encryption helper
-- Conservative sender verification + rule-based category parser (intentionally no assumed Fiverr sender domains)
-- Notification fingerprinting
-- Meta WhatsApp Cloud API template sender
-- WhatsApp webhook verification/status receiver
-- Protected internal sync route
-- SQL schema with RLS, inboxes, preferences, notifications, jobs and delivery logs
+PingDesk never asks for Gmail or Fiverr passwords, never scrapes Fiverr, and never forwards buyer message contents.
 
-## Not production-ready yet
-- Google OAuth app verification / restricted-scope security assessment may be required for public launch.
-- Gmail sender domains and parser patterns must be verified against authorized, redacted Fiverr notification samples.
-- The internal sync endpoint is a foundation, not a deployed always-on worker. Deploy a scheduled worker/cron and durable job runner.
-- Meta templates must be created and approved; opt-in and pricing apply.
-- Add production rate limiting, observability, retention jobs, account deletion and security review.
+See **[docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)** for exactly what is done, tested, and still pending.
 
-## Requirements
-Node.js 20+, npm, Supabase project, Google Cloud project and Meta developer/business setup.
+## Stack
+Next.js 16 (App Router, TypeScript) · Supabase (Postgres, Auth, RLS) · Google Gmail API (read-only) · Meta WhatsApp Cloud API · Zod · Vitest + PGlite
+
+## Layout
+```
+src/app/(auth)/        login, register, forgot/reset password + server actions
+src/app/auth/          email-link confirm, sign-out
+src/app/dashboard/     overview, inboxes, whatsapp, history, preferences, settings
+src/app/api/           google oauth, cron sync (interim), whatsapp webhook
+src/lib/               env, supabase clients, crypto, oauth-state, gmail, classifier, logger
+src/server/queries.ts  dashboard reads (always via the user's session → RLS)
+src/proxy.ts           session refresh + /dashboard guard
+supabase/migrations/   schema, RLS, grants, inbox functions
+tests/db/              RLS + function tests against real Postgres (PGlite)
+tests/unit/            crypto, OAuth state, classifier, redirects
+```
 
 ## Local setup
-1. `cp .env.example .env.local`
-2. Fill in Supabase, Google and Meta values.
-3. `npm install`
-4. `npm run dev`
+1. Node.js 20+ (`node -v`).
+2. `npm install`
+3. `cp .env.example .env.local` and fill in the core values (see comments in the file).
+4. Create a Supabase project, then apply the migrations in order — either `supabase db push` with the Supabase CLI, or paste each file from `supabase/migrations/` into the SQL editor.
+5. In Supabase **Authentication → URL configuration**: set Site URL to your app URL and add `http://localhost:3000/auth/confirm` (and the production equivalent) to Redirect URLs.
+6. Recommended: in **Authentication → Email templates**, change the confirm-signup link to
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/dashboard`
+   and the reset-password link to
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
+   so links work even when opened on a different device. The default links also work in the same browser.
+7. `npm run dev`
 
-Run the SQL in `supabase/schema.sql` in Supabase SQL Editor.
+## Scripts
+| | |
+|---|---|
+| `npm run dev` | dev server |
+| `npm run build` | production build |
+| `npm run typecheck` | TypeScript |
+| `npm run lint` | ESLint |
+| `npm test` | unit + database tests (no external services needed) |
 
 ## Google OAuth
-Create a Web OAuth client. Add the exact redirect URI:
-`http://localhost:3000/api/google/callback`
-
-Use the minimum Gmail scope needed for reading notifications. Gmail read access can trigger Google's restricted-scope verification and security assessment requirements for public apps. Start with test users only.
+Create a **Web** OAuth client in Google Cloud, enable the Gmail API, and add the redirect URI exactly:
+`http://localhost:3000/api/google/callback` (plus your production URL). PingDesk requests only `gmail.readonly`. That is a restricted scope: keep the app in **Testing** with named test users until Google verification (and possibly a security assessment) is complete.
 
 ## Meta WhatsApp
-Configure a WhatsApp Cloud API app and a pre-approved utility template. Set `META_WA_TEMPLATE_ALERT` to its exact template name. Set webhook callback URL to `/api/webhooks/whatsapp` and verify token to `META_WA_VERIFY_TOKEN`.
+Needs a Meta Business account, a WhatsApp Cloud API app, a phone number and an **approved utility template**. Webhook URL: `/api/webhooks/whatsapp`, verify token = `META_WA_VERIFY_TOKEN`. Business-initiated messages outside the 24-hour window must be templates and may be billed by Meta.
 
-## Security notes
-- Never ask for Gmail passwords.
+## Security model
+- Browser roles can only `SELECT` their own rows and update whitelisted columns (inbox label, preferences, profile). Everything else goes through server code.
+- Refresh tokens live in `inbox_credentials`, readable only by the service role, encrypted with AES-256-GCM (versioned keys).
+- OAuth `state` is a signed, 10-minute JWT bound to the signed-in user.
+- Logs are structured JSON with sensitive keys redacted; no tokens, email bodies or phone numbers.
 - Do not commit `.env.local`.
-- Use a 32-byte random `TOKEN_ENCRYPTION_KEY` encoded as 64 hex characters.
-- Do not store raw email bodies or forward buyer message contents in this MVP.
-- Do not scrape Fiverr, automate Fiverr login or access unofficial Fiverr APIs.
-- Configure verified sender domains only after inspecting real, authorized email samples.
