@@ -1,0 +1,33 @@
+{
+  "source": "Synthetic case modelled on a real Fiverr-impersonation scam reported by the project owner (screenshot only, no headers). Addresses are placeholders. Fake 'service payment confirmed \u2014 Ratify' email from a Fiverr-sounding domain the scammer controls (passes its own DMARC).",
+  "expect": {
+    "accepted": false,
+    "reason": "not_fiverr"
+  },
+  "message": {
+    "id": "scam-payment-ratify-lookalike",
+    "threadId": "scam-payment-ratify-lookalike",
+    "internalDate": "1793530680000",
+    "labelIds": [
+      "INBOX"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=pass header.i=@fiverr-payments.example header.s=s1; spf=pass smtp.mailfrom=billing@fiverr-payments.example; dmarc=pass header.from=fiverr-payments.example"
+      },
+      {
+        "name": "From",
+        "value": "Fiverr Payments <billing@fiverr-payments.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "Your service payment has been confirmed"
+      },
+      {
+        "name": "Date",
+        "value": "Sun, 01 Nov 2026 10:58:00 +0000"
+      }
+    ]
+  }
+}
