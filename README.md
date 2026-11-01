@@ -14,7 +14,8 @@ Next.js 16 (App Router, TypeScript) · Supabase (Postgres, Auth, RLS) · Google 
 src/app/(auth)/        login, register, forgot/reset password + server actions
 src/app/auth/          email-link confirm, sign-out
 src/app/dashboard/     overview, inboxes, whatsapp, history, preferences, settings
-src/app/api/           google oauth, cron sync (interim), whatsapp webhook
+src/app/api/           google oauth, cron sync, whatsapp webhook
+src/server/gmail/      sync engine, Google adapter, run loop
 src/lib/               env, supabase clients, crypto, oauth-state, gmail, classifier, logger
 src/server/queries.ts  dashboard reads (always via the user's session → RLS)
 src/proxy.ts           session refresh + /dashboard guard
@@ -48,6 +49,11 @@ tests/unit/            crypto, OAuth state, classifier, redirects
 ## Google OAuth
 Create a **Web** OAuth client in Google Cloud, enable the Gmail API, and add the redirect URI exactly:
 `http://localhost:3000/api/google/callback` (plus your production URL). PingDesk requests only `gmail.readonly`. That is a restricted scope: keep the app in **Testing** with named test users until Google verification (and possibly a security assessment) is complete.
+
+## Gmail sync
+`/api/cron/sync` (GET or POST, `Authorization: Bearer $INTERNAL_CRON_SECRET`) claims due inboxes and syncs them incrementally from Gmail history. Call it every 1–5 minutes. Free options: GitHub Actions `schedule`, Supabase `pg_cron` + `pg_net`, or an uptime pinger. (Vercel Hobby cron only runs daily.)
+
+Fiverr detection rules live in `src/lib/email/fiverr-rules.ts` and must be backed by a real, redacted fixture in `tests/fixtures/fiverr/`.
 
 ## Meta WhatsApp
 Needs a Meta Business account, a WhatsApp Cloud API app, a phone number and an **approved utility template**. Webhook URL: `/api/webhooks/whatsapp`, verify token = `META_WA_VERIFY_TOKEN`. Business-initiated messages outside the 24-hour window must be templates and may be billed by Meta.

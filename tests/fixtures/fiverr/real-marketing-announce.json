@@ -1,0 +1,38 @@
+{
+  "source": "Real marketing email (SendGrid) from announce.fiverr.com; recipient and signatures redacted.",
+  "expect": {
+    "accepted": false,
+    "reason": "marketing"
+  },
+  "message": {
+    "id": "real-marketing-announce",
+    "threadId": "real-marketing-announce",
+    "internalDate": "1791902195000",
+    "labelIds": [
+      "INBOX",
+      "CATEGORY_UPDATES"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=pass header.i=@announce.fiverr.com header.s=s1 header.b=REDACTED; dkim=pass header.i=@sendgrid.info header.s=smtpapi header.b=REDACTED; spf=pass smtp.mailfrom=\"bounces+REDACTED@mail.announce.fiverr.com\"; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=announce.fiverr.com"
+      },
+      {
+        "name": "From",
+        "value": "Fiverr <no-reply@announce.fiverr.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "You look like you mean business"
+      },
+      {
+        "name": "Date",
+        "value": "Tue, 13 Oct 2026 14:36:35 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<redacted@emails.mail>"
+      }
+    ]
+  }
+}

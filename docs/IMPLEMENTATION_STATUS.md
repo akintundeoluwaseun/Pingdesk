@@ -18,12 +18,25 @@ Legend: **Done** = implemented and covered by automated tests or a production bu
 | Google token revocation on disconnect and account deletion | Done (unit) / untested live |
 | Upgraded to Next.js 16.4, Zod 4.6 (fixes high-severity advisories) | Done |
 
-## Phase 2 — Gmail (next)
-- [ ] Replace 24-hour lookback with `historyId` incremental sync + pagination
-- [ ] Reconciliation pass and `historyId` expiry (404) recovery
-- [ ] Mark inboxes `needs_reauth` on `invalid_grant`
-- [ ] Configurable parser rules + SPF/DKIM/DMARC evidence from `Authentication-Results`
-- [ ] Fixture tests from **real, redacted Fiverr emails (needed from you)**
+## Phase 2 — Gmail ✅ (code complete; live Google run pending)
+
+| Item | State |
+|---|---|
+| Incremental sync from Gmail `historyId`, paginated, cursor saved only after processing | Done — tested with a fake Gmail |
+| First-connect bootstrap (cursor taken *before* searching, 2-day lookback) | Done — tested |
+| Expired-cursor (404) recovery with 7-day search + fresh cursor | Done — tested |
+| Reconciliation search every 6 h (sender-restricted query) | Done — tested |
+| Per-run cap with resume from last complete history record | Done — tested |
+| Spam/trash/draft/sent skipped | Done — tested |
+| Revoked access → inbox `needs_reauth`; transient errors counted, back-off, `error` after 5 | Done — DB functions tested |
+| Inbox leases (`claim_inboxes_for_sync`, SKIP LOCKED) so overlapping runs never double-sync | Done — tested |
+| Sender verification from Gmail's own `Authentication-Results` (first header only, mx.google.com, DMARC pass + aligned DKIM) | Done — tested incl. forged-header, misaligned-DKIM, lookalike, display-name attacks |
+| Rules derived from **5 real Fiverr emails** (redacted fixtures in `tests/fixtures/fiverr/`) | Done |
+| Configurable rules (`FIVERR_EXTRA_RULES`, `FIVERR_VERIFIED_SENDER_DOMAINS`) | Done — tested |
+| `/api/cron/sync` uses the new engine (GET/POST, bearer secret) | Builds; untested live |
+
+**Observed sender:** `noreply@e.fiverr.com` (transactional). `announce.fiverr.com` is marketing and is ignored.
+**Recognised subjects:** buyer messages, password reset, phone number added, selling eligibility. **No real samples yet for new order, order update or payment** — those arrive as *Unclassified* until samples are added.
 
 ## Phase 3 — WhatsApp
 - [ ] Number entry, opt-in consent, one-time-code verification
@@ -42,8 +55,7 @@ Legend: **Done** = implemented and covered by automated tests or a production bu
 - Supabase project for PingDesk (none exists yet)
 - Google Cloud OAuth client; Gmail `readonly` is a restricted scope → test users only until Google verification/security assessment
 - Meta Business + WhatsApp Cloud API app, phone number, **approved utility template**
-- Real, redacted Fiverr notification samples (headers + subject; bodies can be removed)
+- Real Fiverr samples for **new order, order update/delivery and payment** emails (from an active seller account)
 
 ## Known interim pieces
-- `/api/cron/sync` is still the original 24-hour lookback pilot, updated only for the new schema. Phase 2 replaces it.
-- The classifier's subject keywords are placeholders until real samples are reviewed. With `FIVERR_VERIFIED_SENDER_DOMAINS` empty, nothing is detected.
+- Sync is triggered by calling `/api/cron/sync`; Phase 4 moves work onto the durable job queue and sets up the free scheduler.

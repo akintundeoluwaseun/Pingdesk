@@ -1,0 +1,38 @@
+{
+  "source": "Real notification received 2026 by the project owner; recipient, buyer username and DKIM signature values redacted.",
+  "expect": {
+    "accepted": true,
+    "category": "buyer_message"
+  },
+  "message": {
+    "id": "real-buyer-message",
+    "threadId": "real-buyer-message",
+    "internalDate": "1791902195000",
+    "labelIds": [
+      "INBOX",
+      "CATEGORY_UPDATES"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=pass header.i=@e.fiverr.com header.s=dkim header.b=REDACTED; spf=pass (google.com: domain of noreply@e.fiverr.com designates 34.192.87.38 as permitted sender) smtp.mailfrom=noreply@e.fiverr.com; dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=e.fiverr.com"
+      },
+      {
+        "name": "From",
+        "value": "Fiverr <noreply@e.fiverr.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "You’ve got new messages from buyer_redacted"
+      },
+      {
+        "name": "Date",
+        "value": "Tue, 13 Oct 2026 14:36:35 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<redacted@emails.mail>"
+      }
+    ]
+  }
+}

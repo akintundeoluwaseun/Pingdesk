@@ -1,62 +1,61 @@
-/**
- * Conservative Fiverr notification classifier (interim).
- *
- * Sender domains are NOT hard-coded: they come from FIVERR_VERIFIED_SENDER_DOMAINS
- * and must be set only after inspecting real, authorized, redacted samples.
- * With the variable empty, nothing is classified — that is intentional.
- *
- * Phase 2 replaces the subject keywords below with configurable rules backed by
- * real sample fixtures, and adds SPF/DKIM/DMARC evidence checks.
- */
-export const CATEGORIES = [
-  "buyer_message",
-  "new_order",
-  "order_update",
-  "payment",
-  "policy",
-  "account_security",
-  "general",
-  "unclassified",
-] as const;
-export type AlertCategory = (typeof CATEGORIES)[number];
+import { isAuthenticSender, parseAuthenticationResults, type AuthEvidence, type Header } from "./auth-results";
+import { IGNORED_SENDER_DOMAINS, loadSubjectRules, normaliseSubject, verifiedSenderDomains, type SubjectRule } from "./fiverr-rules";
+import type { AlertCategory } from "./categories";
 
-export const CATEGORY_LABELS: Record<AlertCategory, string> = {
-  buyer_message: "Buyer message",
-  new_order: "New order",
-  order_update: "Order update",
-  payment: "Payment",
-  policy: "Policy",
-  account_security: "Account security",
-  general: "General",
-  unclassified: "Unclassified",
-};
+export { CATEGORIES, CATEGORY_LABELS, type AlertCategory } from "./categories";
 
-export type Candidate = { from: string; subject: string };
+export type EmailEvaluation =
+  | { accepted: false; reason: "not_fiverr" | "marketing" | "auth_failed" | "malformed"; senderDomain: string | null }
+  | {
+      accepted: true;
+      category: AlertCategory;
+      senderDomain: string;
+      subject: string;
+      evidence: Pick<AuthEvidence, "dmarc" | "dkimPassDomains" | "spf">;
+    };
 
-export function verifiedDomains(): string[] {
-  return (process.env.FIVERR_VERIFIED_SENDER_DOMAINS ?? "")
-    .split(",")
-    .map((x) => x.trim().toLowerCase())
-    .filter(Boolean);
+export function readHeader(headers: Header[], name: string): string {
+  return headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
 
 export function senderDomain(from: string): string | null {
-  const address = (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
+  const address = (from.match(/<([^<>]+)>\s*$/)?.[1] ?? from).trim().toLowerCase();
   const at = address.lastIndexOf("@");
-  if (at < 1) return null;
+  if (at < 1 || /[\s<>]/.test(address)) return null;
   return address.slice(at + 1) || null;
 }
 
-/** Returns null when the email is not from a verified sender (ignore it). */
-export function classifyFiverrEmail(input: Candidate, domains = verifiedDomains()): AlertCategory | null {
-  const domain = senderDomain(input.from);
-  if (!domain || !domains.some((d) => domain === d || domain.endsWith(`.${d}`))) return null;
-  const s = input.subject.toLowerCase();
-  if (/security|password|login|verification code|sign-in/.test(s)) return "account_security";
-  if (/policy|terms of service|account warning/.test(s)) return "policy";
-  if (/payment|withdrawal|earnings|funds/.test(s)) return "payment";
-  if (/new order|order received|you've got an order/.test(s)) return "new_order";
-  if (/order/.test(s)) return "order_update";
-  if (/message|inbox/.test(s)) return "buyer_message";
-  return "unclassified";
+export function categorise(subject: string, rules: SubjectRule[] = loadSubjectRules()): AlertCategory {
+  const s = normaliseSubject(subject);
+  return rules.find((r) => r.pattern.test(s))?.category ?? "unclassified";
+}
+
+/**
+ * Decides whether a Gmail message is a genuine Fiverr notification and, if so,
+ * which category it belongs to. Only exact, verified sender domains with
+ * passing DMARC + aligned DKIM are accepted; everything else is ignored.
+ */
+export function evaluateEmail(
+  headers: Header[],
+  opts: { domains?: string[]; rules?: SubjectRule[] } = {},
+): EmailEvaluation {
+  const from = readHeader(headers, "From");
+  const domain = senderDomain(from);
+  if (!domain) return { accepted: false, reason: "malformed", senderDomain: null };
+  if ((IGNORED_SENDER_DOMAINS as readonly string[]).includes(domain)) return { accepted: false, reason: "marketing", senderDomain: domain };
+
+  const domains = opts.domains ?? verifiedSenderDomains();
+  if (!domains.includes(domain)) return { accepted: false, reason: "not_fiverr", senderDomain: domain };
+
+  const evidence = parseAuthenticationResults(headers);
+  if (!isAuthenticSender(evidence, domain)) return { accepted: false, reason: "auth_failed", senderDomain: domain };
+
+  const subject = readHeader(headers, "Subject").replace(/\s+/g, " ").trim();
+  return {
+    accepted: true,
+    category: categorise(subject, opts.rules),
+    senderDomain: domain,
+    subject: subject.slice(0, 300),
+    evidence: { dmarc: evidence.dmarc, dkimPassDomains: evidence.dkimPassDomains, spf: evidence.spf },
+  };
 }

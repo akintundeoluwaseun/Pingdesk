@@ -1,0 +1,38 @@
+{
+  "source": "Synthetic negative case built from the real header layout. Top header written by a non-Gmail server.",
+  "expect": {
+    "accepted": false,
+    "reason": "auth_failed"
+  },
+  "message": {
+    "id": "spoof-other-authserv",
+    "threadId": "spoof-other-authserv",
+    "internalDate": "1791902195000",
+    "labelIds": [
+      "INBOX",
+      "CATEGORY_UPDATES"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.evil.test; dkim=pass header.i=@e.fiverr.com header.s=dkim header.b=REDACTED; spf=pass (google.com: domain of noreply@e.fiverr.com designates 34.192.87.38 as permitted sender) smtp.mailfrom=noreply@e.fiverr.com; dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=e.fiverr.com"
+      },
+      {
+        "name": "From",
+        "value": "Fiverr <noreply@e.fiverr.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Reset your Fiverr password"
+      },
+      {
+        "name": "Date",
+        "value": "Tue, 13 Oct 2026 14:36:35 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<redacted@emails.mail>"
+      }
+    ]
+  }
+}
