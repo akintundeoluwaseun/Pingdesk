@@ -3,7 +3,8 @@ import { listInboxes, getProfile } from "@/server/queries";
 import { isConfigured } from "@/lib/env";
 import { EmptyState, ErrorPanel, InboxStatusBadge, PageHeader, formatDateTime, timeAgo } from "@/components/ui";
 import { FlashFromQuery } from "@/components/flash";
-import { DisconnectForm, RenameForm } from "./forms";
+import { DisconnectForm, RenameForm, SyncNowButton } from "./forms";
+import { INBOX_ERRORS } from "@/lib/messages";
 
 export const metadata = { title: "Inboxes — PingDesk" };
 
@@ -15,6 +16,7 @@ const ERRORS: Record<string, string> = {
   no_refresh_token: "Google didn't grant long-term access. Remove PingDesk at myaccount.google.com/permissions, then connect again.",
   google_error: "Google returned an error. Try connecting again.",
   connect_failed: "We couldn't finish connecting that inbox. Try again in a moment.",
+  rate_limited: "Too many connection attempts. Wait a while and try again.",
 };
 
 export default async function InboxesPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -81,11 +83,14 @@ export default async function InboxesPage({ searchParams }: { searchParams: Prom
               {inbox.status === "needs_reauth" || inbox.status === "error" ? (
                 <p className="alert alert-warning">
                   {inbox.status === "needs_reauth"
-                    ? "Google access expired or was revoked. Reconnect to resume alerts."
-                    : "We hit repeated errors checking this inbox. Reconnecting usually fixes it."}
+                    ? `${INBOX_ERRORS[inbox.last_error_code ?? ""] ?? "Google access stopped working."} Reconnect to resume alerts.`
+                    : `${INBOX_ERRORS[inbox.last_error_code ?? ""] ?? INBOX_ERRORS.unknown} If this continues, try reconnecting.`}
                 </p>
+              ) : inbox.status === "active" && inbox.last_error_code ? (
+                <p className="alert alert-warning">{INBOX_ERRORS[inbox.last_error_code] ?? INBOX_ERRORS.unknown}</p>
               ) : null}
               <div className="card-actions">
+                {inbox.status === "active" || inbox.status === "error" ? <SyncNowButton inboxId={inbox.id} /> : null}
                 {inbox.status !== "active" && googleReady ? (
                   <a className="btn btn-outline btn-sm" href="/api/google/connect">
                     Reconnect

@@ -114,5 +114,47 @@ export async function getMonthlyUsage() {
 
 export async function getProfile() {
   const db = await supabaseServer();
-  return check(await db.from("profiles").select("full_name,timezone").maybeSingle(), "profile") as Profile | null;
+  return check(await db.from("profiles").select("full_name,timezone,retention_days").maybeSingle(), "profile") as Profile | null;
+}
+
+export type DeliveryAttempt = {
+  attempt: number;
+  status: string;
+  recipient_last4: string | null;
+  error_code: string | null;
+  error_title: string | null;
+  submitted_at: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failed_at: string | null;
+  created_at: string;
+};
+
+export async function getNotificationDetail(id: string) {
+  const db = await supabaseServer();
+  const [n, logs] = await Promise.all([
+    db.from("notifications").select(`${NOTIFICATION_COLUMNS},sender_domain,created_at,delivery_attempts,next_attempt_at`).eq("id", id).maybeSingle(),
+    db
+      .from("delivery_logs")
+      .select("attempt,status,recipient_last4,error_code,error_title,submitted_at,sent_at,delivered_at,read_at,failed_at,created_at")
+      .eq("notification_id", id)
+      .order("attempt"),
+  ]);
+  const notification = check(n, "alert") as (NotificationRow & { sender_domain: string; created_at: string; delivery_attempts: number; next_attempt_at: string | null }) | null;
+  return { notification, attempts: check(logs, "delivery attempts") as DeliveryAttempt[] };
+}
+
+export const ACTIVITY_PAGE_SIZE = 30;
+export type ActivityRow = { id: number; event: string; details: Record<string, unknown>; created_at: string };
+
+export async function listActivity(page: number) {
+  const db = await supabaseServer();
+  const from = (page - 1) * ACTIVITY_PAGE_SIZE;
+  const res = await db
+    .from("audit_events")
+    .select("id,event,details,created_at", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, from + ACTIVITY_PAGE_SIZE - 1);
+  return { rows: check(res, "activity") as ActivityRow[], total: res.count ?? 0 };
 }

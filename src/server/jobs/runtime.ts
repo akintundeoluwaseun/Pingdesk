@@ -7,7 +7,8 @@ import { metaClient } from "@/lib/whatsapp/meta";
 import { log } from "@/lib/log";
 import { googleGmailPort } from "@/server/gmail/google-adapter";
 import type { NotificationStore } from "@/server/gmail/types";
-import { deliverNotificationHandler, maintenanceHandler, syncInboxHandler, type DeliveryContext } from "./handlers";
+import { deliverNotificationHandler, maintenanceHandler, syncInboxHandler, testAlertHandler, type DeliveryContext } from "./handlers";
+import { recordAudit } from "@/server/audit";
 import { runWorker, type WorkerSummary } from "./worker";
 import type { Job, Queue } from "./types";
 
@@ -105,13 +106,25 @@ function handlers() {
         });
         rpcError("finish_inbox_sync", error);
       },
+      onReauthNeeded: (userId, inboxId, label) => recordAudit(userId, "inbox.reauth_needed", { inbox: label }),
       log: (e, f) => (e.endsWith("failed") ? log.warn(e, f) : log.info(e, f)),
     }),
+    send_test_alert: testAlertHandler({
+      async destination(userId) {
+        const [{ data: wa }, { data: profile }] = await Promise.all([
+          db.from("whatsapp_connections").select("phone_e164,status").eq("user_id", userId).maybeSingle(),
+          db.from("profiles").select("timezone").eq("id", userId).maybeSingle(),
+        ]);
+        return wa ? { phone_e164: wa.phone_e164 as string, status: wa.status as string, timezone: (profile?.timezone as string) ?? "UTC" } : null;
+      },
+      whatsapp: whatsappSender,
+      audit: (userId) => recordAudit(userId, "whatsapp.test_sent"),
+    }),
     maintenance: maintenanceHandler({
-      async cleanupJobs() {
-        const { data, error } = await db.rpc("cleanup_jobs");
-        rpcError("cleanup_jobs", error);
-        return Number(data ?? 0);
+      async runRetention() {
+        const { data, error } = await db.rpc("run_retention");
+        rpcError("run_retention", error);
+        return (data ?? {}) as Record<string, number>;
       },
       log: (e, f) => log.info(e, f),
     }),

@@ -6,6 +6,7 @@ import { failureOutcome } from "@/server/delivery/decide";
 import { whatsappSender } from "@/server/jobs/runtime";
 import { parseWebhook, verifySignature } from "@/server/whatsapp/webhook";
 import { log } from "@/lib/log";
+import { recordAuditByPhone } from "@/server/audit";
 
 /**
  * Meta WhatsApp Cloud API webhook.
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
     }
     if (m.action !== "message" && (affected ?? 0) > 0) {
       log.info("whatsapp.opt_change", { action: m.action });
+      await recordAuditByPhone(m.phone, m.action === "stop" ? "whatsapp.opted_out" : "whatsapp.opted_in");
       // The user just messaged us, so a free-form reply is inside the 24-hour window.
       try {
         await whatsappSender()?.client.sendText(

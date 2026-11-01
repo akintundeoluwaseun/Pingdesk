@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { deleteAccount, saveProfile, type ActionState } from "../actions";
+import { deleteAccount, saveProfile, saveRetention, type ActionState } from "../actions";
 import { Field, FormAlert, SubmitButton } from "@/components/forms";
 
 export function ProfileForm({ fullName, timezone, zones, email }: { fullName: string; timezone: string; zones: string[]; email: string }) {
@@ -54,6 +54,28 @@ export function DeleteAccountForm({ email }: { email: string }) {
             Delete account permanently
           </button>
         )}
+      </div>
+    </form>
+  );
+}
+
+export function RetentionForm({ days }: { days: number }) {
+  const [state, action] = useActionState<ActionState, FormData>(saveRetention, {});
+  return (
+    <form action={action} className="stack narrow">
+      <div className="field">
+        <label htmlFor="retentionDays">Keep alert history for</label>
+        <select id="retentionDays" name="retentionDays" defaultValue={String(days)}>
+          <option value="30">30 days</option>
+          <option value="90">90 days</option>
+          <option value="180">180 days</option>
+          <option value="365">1 year</option>
+        </select>
+        <p className="hint">Older alerts and their delivery records are deleted automatically each day. Activity entries are kept for a year.</p>
+      </div>
+      <div className="row">
+        <FormAlert error={state.error} message={state.message} />
+        <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
       </div>
     </form>
   );

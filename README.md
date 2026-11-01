@@ -61,6 +61,9 @@ Fiverr detection rules live in `src/lib/email/fiverr-rules.ts` and must be backe
 ## Meta WhatsApp
 See **[docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md)** — templates to submit (exact wording), env vars, webhook, retry/opt-out behaviour and costs. Delivery runs as `deliver_notification` jobs.
 
+## Monitoring
+`GET /api/admin/status` with `Authorization: Bearer $OPS_STATUS_SECRET` (or the cron secret) returns aggregate health: queue backlog, expired leases, dead jobs, inbox/WhatsApp status counts, delivery errors in the last 24 h. It responds 503 when something needs attention, so a free uptime monitor can alert you. Application logs are structured JSON with sensitive fields redacted.
+
 ## Security model
 - Browser roles can only `SELECT` their own rows and update whitelisted columns (inbox label, preferences, profile). Everything else goes through server code.
 - Refresh tokens live in `inbox_credentials`, readable only by the service role, encrypted with AES-256-GCM (versioned keys).

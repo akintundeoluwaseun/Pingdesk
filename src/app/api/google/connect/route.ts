@@ -3,6 +3,7 @@ import { googleOAuthClient, GMAIL_SCOPE } from "@/lib/google/oauth";
 import { googleEnv, isConfigured } from "@/lib/env";
 import { getUser } from "@/lib/supabase/server";
 import { createOAuthState, STATE_COOKIE } from "@/lib/security/oauth-state";
+import { allow, LIMITS } from "@/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,7 @@ export async function GET(req: NextRequest) {
   const user = await getUser();
   if (!user) return NextResponse.redirect(new URL("/login?next=/dashboard/inboxes", req.url));
   if (!isConfigured("google")) return back("google_not_configured");
+  if (!(await allow(`gmail_connect:${user.id}`, LIMITS.gmailConnect))) return back("rate_limited");
 
   const { nonce, cookie } = await createOAuthState(user.id, googleEnv().OAUTH_STATE_SECRET);
   const url = googleOAuthClient().generateAuthUrl({

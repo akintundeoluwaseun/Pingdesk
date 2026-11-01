@@ -8,6 +8,8 @@ import { isConfigured } from "@/lib/env";
 import { toE164 } from "@/lib/whatsapp/phone";
 import { confirmVerification, startVerification, type StartResult } from "@/server/whatsapp/verification";
 import { log } from "@/lib/log";
+import { recordAudit } from "@/server/audit";
+import { allow, LIMITS } from "@/server/rate-limit";
 
 export type WaState = { error?: string; message?: string; step?: "code" };
 
@@ -35,7 +37,10 @@ export async function requestCode(_: WaState, form: FormData): Promise<WaState> 
   try {
     const result = await startVerification(user.id, phone);
     revalidatePath("/dashboard/whatsapp");
-    if (result === "ok") return { step: "code", message: "We sent a 6-digit code to your WhatsApp." };
+    if (result === "ok") {
+      await recordAudit(user.id, "whatsapp.code_sent", { number_ending: phone.slice(-4) });
+      return { step: "code", message: "We sent a 6-digit code to your WhatsApp." };
+    }
     return { error: START_MESSAGES[result] };
   } catch (e) {
     log.error("whatsapp.request_code_failed", { user_id: user.id, error: e });
@@ -64,6 +69,7 @@ export async function submitCode(_: WaState, form: FormData): Promise<WaState> {
     switch (result) {
       case "verified":
         log.info("whatsapp.verified", { user_id: user.id });
+        await recordAudit(user.id, "whatsapp.verified");
         return { message: "Number verified. Alerts will now reach your WhatsApp." };
       case "invalid":
         return { error: "That code isn't right. Check it and try again." };
@@ -85,6 +91,25 @@ export async function removeNumber(): Promise<WaState> {
   const { error } = await supabaseAdmin().from("whatsapp_connections").delete().eq("user_id", user.id);
   if (error) return { error: "We couldn't remove the number. Try again." };
   log.info("whatsapp.removed", { user_id: user.id });
+  await recordAudit(user.id, "whatsapp.removed");
   revalidatePath("/dashboard", "layout");
   return { message: "Number removed. No more WhatsApp alerts will be sent." };
+}
+
+export async function sendTestAlert(): Promise<WaState> {
+  const user = await requireUser();
+  const off = unavailable();
+  if (off) return off;
+  const { data: wa } = await supabaseAdmin().from("whatsapp_connections").select("status").eq("user_id", user.id).maybeSingle();
+  if (wa?.status !== "verified") return { error: "Verify your number first." };
+  if (!(await allow(`test_alert:${user.id}`, LIMITS.testAlert))) return { error: "You can send 3 test alerts a day. Try again tomorrow." };
+  const { error } = await supabaseAdmin().rpc("enqueue_job", {
+    p_job_type: "send_test_alert",
+    p_user_id: user.id,
+    p_dedupe_key: `test_alert:${user.id}`,
+    p_max_attempts: 3,
+    p_priority: 5,
+  });
+  if (error) return { error: "We couldn't queue the test alert. Try again." };
+  return { message: "Test alert on its way — it should arrive within a minute." };
 }

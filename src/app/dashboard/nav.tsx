@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Activity, History, Inbox, LayoutGrid, Menu, MessageCircle, Settings, SlidersHorizontal, X } from "lucide-react";
+import { Activity, History, Inbox, LayoutGrid, Menu, MessageCircle, ScrollText, Settings, SlidersHorizontal, X } from "lucide-react";
 
 const LINKS = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid },
@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
   { href: "/dashboard/history", label: "History", icon: History },
   { href: "/dashboard/preferences", label: "Preferences", icon: SlidersHorizontal },
+  { href: "/dashboard/activity", label: "Activity", icon: ScrollText },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

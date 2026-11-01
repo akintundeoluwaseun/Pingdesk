@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { Check, Pencil } from "lucide-react";
-import { disconnectInbox, renameInbox, type ActionState } from "../actions";
+import { Check, Pencil, RefreshCw } from "lucide-react";
+import { disconnectInbox, renameInbox, syncNow, type ActionState } from "../actions";
 import { FormAlert, SubmitButton } from "@/components/forms";
 
 export function RenameForm({ inboxId, label, disabled }: { inboxId: string; label: string; disabled?: boolean }) {
@@ -86,6 +86,19 @@ export function DisconnectForm({ inboxId, label, alreadyDisconnected }: { inboxI
           {alreadyDisconnected ? `Remove ${label}` : `Disconnect ${label}`}
         </SubmitButton>
       </div>
+    </form>
+  );
+}
+
+export function SyncNowButton({ inboxId }: { inboxId: string }) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(syncNow, {});
+  return (
+    <form action={action} className="sync-now">
+      <input type="hidden" name="inboxId" value={inboxId} />
+      <button type="submit" className="btn btn-outline btn-sm" disabled={pending}>
+        <RefreshCw size={13} aria-hidden className={pending ? "spin" : undefined} /> Check now
+      </button>
+      {state.error || state.message ? <FormAlert error={state.error} message={state.message} /> : null}
     </form>
   );
 }

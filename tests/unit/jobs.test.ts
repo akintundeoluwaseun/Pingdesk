@@ -187,3 +187,46 @@ describe("sync_inbox handler", () => {
     expect(finish).not.toHaveBeenCalled();
   });
 });
+
+import { maintenanceHandler, testAlertHandler } from "@/server/jobs/handlers";
+import { describeDeliveryError, ACTIVITY_LABELS } from "@/lib/messages";
+
+describe("send_test_alert handler", () => {
+  const userJob = { ...job({}), job_type: "send_test_alert", user_id: "u1" };
+  it("sends a clearly labelled test to a verified number and logs it", async () => {
+    const { client } = deliveryDeps(ctx());
+    const audit = vi.fn(async () => {});
+    const r = await testAlertHandler({
+      destination: async () => ({ phone_e164: "+2348031234567", status: "verified", timezone: "UTC" }),
+      whatsapp: () => ({ client, template: "pingdesk_alert", language: "en" }),
+      audit,
+    })(userJob);
+    expect(r).toEqual({ kind: "done" });
+    const params = (client.sendTemplate as ReturnType<typeof vi.fn>).mock.calls[0][3][0].parameters.map((p: { text: string }) => p.text);
+    expect(params.slice(0, 2)).toEqual(["Fiverr update", "PingDesk test"]);
+    expect(audit).toHaveBeenCalledWith("u1");
+  });
+  it("does nothing for unverified numbers", async () => {
+    const { client } = deliveryDeps(ctx());
+    await testAlertHandler({ destination: async () => ({ phone_e164: "+1", status: "opted_out", timezone: "UTC" }), whatsapp: () => ({ client, template: "t", language: "en" }), audit: vi.fn() })(userJob);
+    expect(client.sendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+describe("maintenance handler", () => {
+  it("runs retention", async () => {
+    const runRetention = vi.fn(async () => ({ notifications: 3 }));
+    expect(await maintenanceHandler({ runRetention })({ ...job({}), job_type: "maintenance" })).toEqual({ kind: "done" });
+    expect(runRetention).toHaveBeenCalled();
+  });
+});
+
+describe("user-facing messages", () => {
+  it("explains delivery errors and activity events in plain language", () => {
+    expect(describeDeliveryError("131026", "Message undeliverable")).toMatch(/couldn't deliver/);
+    expect(describeDeliveryError("http_0", null)).toMatch(/couldn't reach WhatsApp/);
+    expect(describeDeliveryError(null, null)).toBe("an unknown error");
+    expect(ACTIVITY_LABELS["inbox.connected"]({ email: "a@gmail.test" })).toBe("Connected Gmail inbox a@gmail.test");
+    expect(ACTIVITY_LABELS["preferences.updated"]({ paused: true })).toBe("Paused all alerts");
+  });
+});

@@ -36,4 +36,4 @@ export type WhatsAppConnection = {
   opted_in_at: string | null;
 };
 
-export type Profile = { full_name: string | null; timezone: string };
+export type Profile = { full_name: string | null; timezone: string; retention_days: number };

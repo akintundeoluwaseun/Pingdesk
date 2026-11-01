@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encryptSecret } from "@/lib/security/crypto";
 import { STATE_COOKIE, verifyOAuthState } from "@/lib/security/oauth-state";
 import { log } from "@/lib/log";
+import { recordAudit } from "@/server/audit";
 
 export const runtime = "nodejs";
 
@@ -66,6 +67,7 @@ export async function GET(req: NextRequest) {
     if (error) throw new Error(`link_gmail_inbox failed: ${error.code ?? "unknown"}`);
 
     log.info("gmail.connected", { user_id: user.id });
+    await recordAudit(user.id, "inbox.connected", { email });
     return done("connected=1");
   } catch (err) {
     log.error("gmail.connect_failed", { user_id: user.id, error: err });

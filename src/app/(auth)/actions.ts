@@ -6,6 +6,7 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { safeNext } from "@/lib/safe-redirect";
 import { log } from "@/lib/log";
+import { recordAudit } from "@/server/audit";
 
 export type FormState = { error?: string; message?: string; fields?: Record<string, string> };
 
@@ -103,7 +104,7 @@ export async function updatePassword(_: FormState, form: FormData): Promise<Form
     .safeParse({ password: form.get("password"), confirm: form.get("confirm") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const supabase = await supabaseServer();
-  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  const { data: updated, error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) {
     return {
       error:
@@ -112,5 +113,6 @@ export async function updatePassword(_: FormState, form: FormData): Promise<Form
           : "Your reset link has expired. Request a new one.",
     };
   }
+  if (updated.user) await recordAudit(updated.user.id, "account.password_changed");
   redirect("/dashboard?password=updated");
 }

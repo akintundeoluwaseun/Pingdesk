@@ -9,13 +9,16 @@ import { decryptSecret } from "@/lib/security/crypto";
 import { revokeGoogleToken } from "@/lib/google/oauth";
 import { CATEGORIES } from "@/lib/email/classify";
 import { log } from "@/lib/log";
+import { recordAudit } from "@/server/audit";
+import { allow, LIMITS } from "@/server/rate-limit";
 
 export type ActionState = { error?: string; message?: string };
 
 const uuid = z.uuid();
 
 export async function renameInbox(_: ActionState, form: FormData): Promise<ActionState> {
-  await requireUser();
+  const user = await requireUser();
+  if (!(await allow(`rename:${user.id}`, LIMITS.rename))) return { error: "Too many changes. Try again in a while." };
   const parsed = z
     .object({ inboxId: uuid, label: z.string().trim().min(1, "Give the inbox a name.").max(60, "Keep it under 60 characters.") })
     .safeParse({ inboxId: form.get("inboxId"), label: form.get("label") });
@@ -28,6 +31,7 @@ export async function renameInbox(_: ActionState, form: FormData): Promise<Actio
     .eq("id", parsed.data.inboxId)
     .select("id");
   if (error || !data?.length) return { error: "We couldn't rename that inbox. Refresh the page and try again." };
+  await recordAudit(user.id, "inbox.renamed", { inbox: parsed.data.label });
   revalidatePath("/dashboard", "layout");
   return { message: "Saved." };
 }
@@ -69,6 +73,7 @@ export async function disconnectInbox(_: ActionState, form: FormData): Promise<A
     if (error) throw new Error(`disconnect_inbox failed: ${error.code}`);
     if (!ok) return { error: "That inbox could not be found." };
     log.info("gmail.disconnected", { user_id: user.id, inbox_id: parsed.data.inboxId, revoked });
+    await recordAudit(user.id, parsed.data.deleteHistory === "on" ? "inbox.removed" : "inbox.disconnected", { google_access_revoked: revoked });
     revalidatePath("/dashboard", "layout");
     return {
       message: revoked
@@ -83,11 +88,16 @@ export async function disconnectInbox(_: ActionState, form: FormData): Promise<A
 
 export async function savePreferences(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
+  if (!(await allow(`prefs:${user.id}`, LIMITS.preferences))) return { error: "Too many changes. Try again in a while." };
   const update: Record<string, boolean> = { alerts_paused: form.get("alerts_paused") === "on" };
   for (const c of CATEGORIES) update[c] = form.get(c) === "on";
   const db = await supabaseServer();
   const { data, error } = await db.from("notification_preferences").update(update).eq("user_id", user.id).select("user_id");
   if (error || !data?.length) return { error: "We couldn't save your preferences. Try again." };
+  await recordAudit(user.id, "preferences.updated", {
+    paused: update.alerts_paused,
+    categories_on: CATEGORIES.filter((c) => update[c]).length,
+  });
   revalidatePath("/dashboard", "layout");
   return { message: "Preferences saved." };
 }
@@ -110,8 +120,33 @@ export async function saveProfile(_: ActionState, form: FormData): Promise<Actio
     .eq("id", user.id)
     .select("id");
   if (error || !data?.length) return { error: "We couldn't save your profile. Try again." };
+  await recordAudit(user.id, "profile.updated", { timezone: parsed.data.timezone });
   revalidatePath("/dashboard", "layout");
   return { message: "Profile saved." };
+}
+
+export async function saveRetention(_: ActionState, form: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const parsed = z.coerce.number().pipe(z.union([z.literal(30), z.literal(90), z.literal(180), z.literal(365)])).safeParse(form.get("retentionDays"));
+  if (!parsed.success) return { error: "Choose one of the listed periods." };
+  const db = await supabaseServer();
+  const { data, error } = await db.from("profiles").update({ retention_days: parsed.data }).eq("id", user.id).select("id");
+  if (error || !data?.length) return { error: "We couldn't save that setting. Try again." };
+  await recordAudit(user.id, "profile.updated", { retention_days: parsed.data });
+  revalidatePath("/dashboard/settings");
+  return { message: `Alert history older than ${parsed.data} days will be deleted automatically.` };
+}
+
+export async function syncNow(_: ActionState, form: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const inboxId = uuid.safeParse(form.get("inboxId"));
+  if (!inboxId.success) return { error: "That inbox could not be found." };
+  const { data, error } = await supabaseAdmin().rpc("request_sync_now", { p_user_id: user.id, p_inbox_id: inboxId.data });
+  if (error) return { error: "We couldn't start a check. Try again." };
+  if (data === "rate_limited") return { error: "You've checked this inbox several times recently. It's still checked automatically every minute." };
+  if (data !== "queued") return { error: "That inbox can't be checked right now. Reconnect it first." };
+  await recordAudit(user.id, "inbox.sync_requested");
+  return { message: "Checking now — new alerts will appear within a minute." };
 }
 
 export async function deleteAccount(_: ActionState, form: FormData): Promise<ActionState> {

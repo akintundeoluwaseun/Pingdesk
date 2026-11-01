@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { removeNumber, requestCode, resendCode, submitCode, type WaState } from "./actions";
+import { removeNumber, requestCode, resendCode, sendTestAlert, submitCode, type WaState } from "./actions";
 import { Field, FormAlert, SubmitButton } from "@/components/forms";
 
 export function PhoneForm({ initialPhone, cta = "Send verification code" }: { initialPhone?: string; cta?: string }) {
@@ -109,4 +109,16 @@ export function ChangeNumber() {
       </button>
     );
   return <PhoneForm cta="Send code to new number" />;
+}
+
+export function TestAlertButton() {
+  const [state, action] = useActionState<WaState>(sendTestAlert, {});
+  return (
+    <form action={action} className="sync-now">
+      <SubmitButton variant="outline" className="btn-sm" pendingLabel="Queuing…">
+        Send test alert
+      </SubmitButton>
+      {state.error || state.message ? <FormAlert error={state.error} message={state.message} /> : null}
+    </form>
+  );
 }

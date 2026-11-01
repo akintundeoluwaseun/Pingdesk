@@ -116,7 +116,9 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                     </td>
                     <td data-label="Inbox">{n.inbox_label}</td>
                     <td data-label="Subject" className="subject">
-                      {n.subject ?? <span className="muted">—</span>}
+                      <Link href={`/dashboard/history/${n.id}`} className="row-link">
+                        {n.subject ?? "Fiverr notification"}
+                      </Link>
                     </td>
                     <td data-label="Status">
                       <NotificationStatusBadge status={n.status} />

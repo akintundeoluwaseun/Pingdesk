@@ -2,7 +2,7 @@ import { MessageCircle, ShieldCheck } from "lucide-react";
 import { getWhatsApp, getMonthlyUsage } from "@/server/queries";
 import { isConfigured } from "@/lib/env";
 import { EmptyState, ErrorPanel, PageHeader, formatDateTime } from "@/components/ui";
-import { ChangeNumber, CodeForm, PhoneForm, RemoveNumber } from "./forms";
+import { ChangeNumber, CodeForm, PhoneForm, RemoveNumber, TestAlertButton } from "./forms";
 
 export const metadata = { title: "WhatsApp — PingDesk" };
 
@@ -61,6 +61,7 @@ export default async function WhatsAppPage() {
             </div>
           </dl>
           <div className="card-actions">
+            {wa.status === "verified" ? <TestAlertButton /> : null}
             <ChangeNumber />
             <RemoveNumber />
           </div>

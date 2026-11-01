@@ -1,4 +1,4 @@
-import { decide, failureOutcome, type ClaimedNotification } from "@/server/delivery/decide";
+import { alertComponents, decide, failureOutcome, type ClaimedNotification } from "@/server/delivery/decide";
 import { MetaError, type WhatsAppClient } from "@/lib/whatsapp/meta";
 import { last4 } from "@/lib/whatsapp/phone";
 import { syncInbox } from "@/server/gmail/sync";
@@ -79,6 +79,7 @@ export type SyncDeps = {
   gmail(refreshToken: string): GmailPort;
   store: NotificationStore;
   finish(inboxId: string, historyId: string | null, reconciled: boolean, errorCode: string | null, needsReauth: boolean): Promise<void>;
+  onReauthNeeded?(userId: string, inboxId: string, label: string): Promise<void>;
   log?: (event: string, fields: Record<string, unknown>) => void;
 };
 
@@ -99,6 +100,7 @@ export function syncInboxHandler(deps: SyncDeps): Handler {
     } catch (err) {
       const ge = err instanceof GmailError ? err : null;
       await deps.finish(id, null, false, ge?.kind ?? "internal_error", ge?.needsReauth ?? false);
+      if (ge?.needsReauth) await deps.onReauthNeeded?.(inbox.user_id, id, inbox.label);
       deps.log?.("gmail.sync_failed", { inbox_id: id, kind: ge?.kind ?? "internal_error", error: err instanceof Error ? err.message.slice(0, 200) : "unknown" });
     }
     return { kind: "done" };
@@ -106,12 +108,45 @@ export function syncInboxHandler(deps: SyncDeps): Handler {
 }
 
 // ---------------------------------------------------------------------------
-// maintenance
+// send_test_alert — a user-requested sample alert to confirm WhatsApp works
 // ---------------------------------------------------------------------------
-export function maintenanceHandler(deps: { cleanupJobs(): Promise<number>; log?: (e: string, f: Record<string, unknown>) => void }): Handler {
+export type TestAlertDeps = {
+  destination(userId: string): Promise<{ phone_e164: string; status: string; timezone: string } | null>;
+  whatsapp: DeliveryDeps["whatsapp"];
+  audit(userId: string): Promise<void>;
+};
+
+export function testAlertHandler(deps: TestAlertDeps): Handler {
+  return async (job) => {
+    const userId = job.user_id;
+    if (!userId) throw new PermanentJobError("missing user_id");
+    const dest = await deps.destination(userId);
+    if (!dest || dest.status !== "verified") return { kind: "done" };
+    const wa = deps.whatsapp();
+    if (!wa) return { kind: "dead", reason: "whatsapp not configured" };
+    try {
+      await wa.client.sendTemplate(
+        dest.phone_e164,
+        wa.template,
+        wa.language,
+        alertComponents({ category: "general", inbox_label: "PingDesk test", received_at: new Date().toISOString(), timezone: dest.timezone }),
+      );
+      await deps.audit(userId);
+      return { kind: "done" };
+    } catch (err) {
+      const me = err instanceof MetaError ? err : new MetaError(null, "Unexpected send error", true, false, 0);
+      return me.retryable ? { kind: "retry", at: new Date(Date.now() + 60_000), reason: `meta ${me.code ?? me.httpStatus}` } : { kind: "dead", reason: me.title };
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// maintenance — daily retention and housekeeping
+// ---------------------------------------------------------------------------
+export function maintenanceHandler(deps: { runRetention(): Promise<Record<string, number>>; log?: (e: string, f: Record<string, unknown>) => void }): Handler {
   return async () => {
-    const removed = await deps.cleanupJobs();
-    deps.log?.("maintenance.done", { jobs_removed: removed });
+    const removed = await deps.runRetention();
+    deps.log?.("maintenance.done", removed);
     return { kind: "done" };
   };
 }

@@ -71,9 +71,27 @@ Legend: **Done** = implemented and covered by automated tests or a production bu
 | Scheduler: Supabase pg_cron + pg_net every minute (SQL in `docs/SCHEDULER.md`), GitHub Actions backup every 5 min | Written; untested live |
 | Fully cloud-based — no dependency on the customer's computer | By design |
 
-## Phase 5–6
-- [ ] Operational log view, retention job, app-level rate limiting
-- [ ] Live Gmail + WhatsApp tests, security review, deployment guide
+## Phase 5 — Finish the product ✅ (code complete)
+
+| Item | State |
+|---|---|
+| Alert detail page: category, inbox, timestamps, verified sender, skip reason, full delivery timeline per attempt | Done — rendered and checked |
+| History rows link to details; filters and pagination | Done |
+| Inbox management: "Check now" (queued, 6/hour/inbox), plain-language sync error explanations | Done — DB function tested |
+| WhatsApp: "Send test alert" (queued job, 3/day) | Done — tested |
+| Activity log (connections, verification, opt-out, preference/profile/password changes, reauth needed) — user-visible, read-only, RLS | Done — tested |
+| Data retention setting (30/90/180/365 days) applied by the daily maintenance job; audit kept 1 year | Done — tested |
+| Rate limiting (DB fixed-window): Gmail connect, rename, preferences, test alerts, Check now, verification codes | Done — tested |
+| Operator status endpoint `GET /api/admin/status` (aggregate counts, 503 when unhealthy — usable by any free uptime monitor) | Done — DB function tested |
+| Error boundary, global error page, 404 page, loading skeletons | Done |
+| Responsive layouts (desktop / mobile) for all pages | Checked with screenshots |
+
+## Phase 6 — Test and deploy (next)
+- [ ] Live Supabase project: apply migrations, auth flow end to end
+- [ ] Live Gmail test with a test user
+- [ ] Live WhatsApp test with approved templates
+- [ ] Security review (endpoints, RLS, secrets, headers/CSP)
+- [ ] Hosting choice for a commercial product + deployment guide
 
 ## External requirements still open
 - Supabase project for PingDesk (none exists yet)

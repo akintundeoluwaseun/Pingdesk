@@ -1,7 +1,7 @@
 import { getProfile } from "@/server/queries";
 import { requireUser } from "@/lib/supabase/server";
 import { ErrorPanel, PageHeader } from "@/components/ui";
-import { DeleteAccountForm, ProfileForm } from "./forms";
+import { DeleteAccountForm, ProfileForm, RetentionForm } from "./forms";
 
 export const metadata = { title: "Settings — PingDesk" };
 
@@ -20,6 +20,10 @@ export default async function SettingsPage() {
       <section className="panel" aria-labelledby="profile-h">
         <h2 id="profile-h">Profile</h2>
         <ProfileForm fullName={profile?.full_name ?? ""} timezone={profile?.timezone ?? "UTC"} zones={["UTC", ...zones]} email={user.email ?? ""} />
+      </section>
+      <section className="panel" aria-labelledby="data-h">
+        <h2 id="data-h">Data</h2>
+        <RetentionForm days={profile?.retention_days ?? 90} />
       </section>
       <section className="panel" aria-labelledby="plan-h">
         <h2 id="plan-h">Plan</h2>
