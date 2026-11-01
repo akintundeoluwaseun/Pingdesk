@@ -1,0 +1,33 @@
+# Implementation status
+
+## Present in scaffold
+- [x] Next.js dashboard shell
+- [x] Supabase client helpers
+- [x] Gmail OAuth start and callback route
+- [x] Signed OAuth state cookie and nonce comparison
+- [x] Refresh-token encryption helper
+- [x] Gmail message metadata retrieval
+- [x] Conservative email classification adapter
+- [x] Notification fingerprinting
+- [x] WhatsApp template send helper
+- [x] WhatsApp webhook signature validation and delivery status update
+- [x] Protected internal Gmail sync route
+- [x] Database schema and RLS policies
+
+## Must be completed before real customer use
+- [ ] Add Supabase Auth UI/middleware and account settings
+- [ ] Validate OAuth callback, refresh-token behavior and account-linking edge cases
+- [ ] Add Google userinfo/profile consent and disconnect/revoke flow
+- [ ] Verify sender domains from real authorized Fiverr notification samples
+- [ ] Add parser tests and email authentication checks (SPF/DKIM/DMARC evidence)
+- [ ] Add durable notification-delivery worker with preference/opt-in enforcement
+- [ ] Add approved Meta template and WhatsApp number ownership verification flow
+- [ ] Add webhook idempotency and robust error handling
+- [ ] Add rate limiting, audit logging, retention and deletion workflows
+- [ ] Add Gmail reconciliation with persisted historyId and pagination
+- [ ] Deploy worker/cron and configure monitoring
+- [ ] Complete applicable Google OAuth verification and Meta business requirements
+- [ ] Security review and end-to-end pilot
+
+## Important
+The sync route currently looks back 24 hours and relies on database uniqueness to avoid duplicates. It is a temporary pilot implementation, not a scalable production sync strategy. Replace it with Gmail historyId-based incremental synchronization and a durable queue before production.
