@@ -1153,3 +1153,26 @@ footer span {
     animation: none !important;
   }
 }
+
+/* Align names in alert lists regardless of category label length */
+.list-row .tag {
+  min-width: 118px;
+  text-align: center;
+}
+/* Sidebar spans the full page height on desktop */
+@media (min-width: 861px) {
+  .app {
+    display: grid;
+    grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    width: auto;
+  }
+  .app-main {
+    margin-left: 0;
+    max-width: 1080px;
+  }
+}
