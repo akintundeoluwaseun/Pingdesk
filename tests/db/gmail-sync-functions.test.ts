@@ -11,8 +11,16 @@ async function inbox(email: string) {
   );
   return r.rows[0].id;
 }
-const claim = (limit = 10) =>
-  db.query<{ id: string; encrypted_refresh_token: string }>("select * from public.claim_inboxes_for_sync($1, 120, 60)", [limit]);
+/** Enqueues due syncs and returns the inbox ids that now have an active sync job. */
+const claim = async () => {
+  await db.query("select public.enqueue_due_syncs(60)");
+  const r = await db.query<{ id: string }>(
+    "select (payload->>'inbox_id') as id from public.jobs where job_type = 'sync_inbox' and status = 'queued' order by created_at",
+  );
+  // consume them so the next call only shows newly enqueued work
+  await db.query("update public.jobs set status = 'succeeded', finished_at = now() where job_type = 'sync_inbox' and status = 'queued'");
+  return r;
+};
 const row = async (id: string) =>
   (
     await db.query<{ status: string; last_history_id: string | null; consecutive_failures: number; last_error_code: string | null; sync_locked_until: string | null; last_reconciled_at: string | null }>(
@@ -26,27 +34,20 @@ beforeEach(async () => {
   user = await createUser(db, "seller@example.test");
 });
 
-describe("claim_inboxes_for_sync", () => {
+describe("enqueue_due_syncs", () => {
   it("is service-role only", async () => {
     await as(db, "authenticated", user, async (tx) => {
-      await expect(tx.query("select * from public.claim_inboxes_for_sync()")).rejects.toThrow(/permission denied/);
+      await expect(tx.query("select public.enqueue_due_syncs()")).rejects.toThrow(/permission denied/);
       await expect(tx.query("select public.finish_inbox_sync(gen_random_uuid(), null, false)")).rejects.toThrow(/permission denied/);
     });
   });
 
-  it("leases inboxes so a second worker gets nothing", async () => {
+  it("keeps at most one active sync job per inbox", async () => {
     const a = await inbox("a@gmail.test");
-    const first = await claim();
-    expect(first.rows.map((r) => r.id)).toEqual([a]);
-    expect(first.rows[0].encrypted_refresh_token).toBe("v1:tok");
-    expect((await claim()).rows).toHaveLength(0);
-  });
-
-  it("re-offers an inbox when the lease expires (crashed worker)", async () => {
-    const a = await inbox("a@gmail.test");
-    await claim();
-    await db.query("update public.connected_inboxes set sync_locked_until = now() - interval '1 second' where id = $1", [a]);
-    expect((await claim()).rows.map((r) => r.id)).toEqual([a]);
+    expect((await db.query<{ n: number }>("select public.enqueue_due_syncs(60) as n")).rows[0].n).toBe(1);
+    expect((await db.query<{ n: number }>("select public.enqueue_due_syncs(60) as n")).rows[0].n).toBe(0);
+    const jobs = await db.query<{ id: string }>("select payload->>'inbox_id' as id from public.jobs where job_type = 'sync_inbox'");
+    expect(jobs.rows.map((r) => r.id)).toEqual([a]);
   });
 
   it("skips disconnected, reauth-needed and recently synced inboxes", async () => {
@@ -72,7 +73,6 @@ describe("finish_inbox_sync", () => {
   it("saves the cursor and clears errors on success", async () => {
     const a = await inbox("a@gmail.test");
     await db.query("update public.connected_inboxes set consecutive_failures = 2, last_error_code = 'unavailable', status = 'error' where id = $1", [a]);
-    await claim();
     await db.query("select public.finish_inbox_sync($1, '777', true)", [a]);
     expect(await row(a)).toMatchObject({ status: "active", last_history_id: "777", consecutive_failures: 0, last_error_code: null, sync_locked_until: null });
     expect((await row(a)).last_reconciled_at).not.toBeNull();

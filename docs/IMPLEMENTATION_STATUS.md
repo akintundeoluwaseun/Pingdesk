@@ -55,9 +55,21 @@ Legend: **Done** = implemented and covered by automated tests or a production bu
 | WhatsApp page: connect, verify, resend, change, remove, monthly usage | Builds; untested live |
 | Setup guide with exact template wording: `docs/WHATSAPP_SETUP.md` | Done |
 
-## Phase 4 — Background processing
-- [ ] Queue functions (claim with `SKIP LOCKED` + leases, backoff, dead-letter) on the existing `jobs` table
-- [ ] Sync and delivery workers, scheduler (free tier: Supabase `pg_cron` + `pg_net`, or GitHub Actions cron)
+## Phase 4 — Background processing ✅ (code complete; live scheduler run pending)
+
+| Item | State |
+|---|---|
+| Durable Postgres job queue: `enqueue_job`, `claim_jobs` (SKIP LOCKED + leases), `complete_job`, `fail_job`, `release_job` | Done — 15 DB tests |
+| Restart/crash recovery: expired lease → re-claimed; poison jobs → `dead` | Done — tested |
+| Fencing: a worker that lost its lease can't overwrite results | Done — tested |
+| Idempotency keys (once ever) + dedupe keys (one active per inbox / notification) | Done — tested |
+| Delivery job created by trigger in the same transaction as the notification (rollback-safe) | Done — tested |
+| Webhook-reported retryable failures re-queue delivery | Done — tested |
+| Workers: `sync_inbox`, `deliver_notification` (idempotent), daily `maintenance` | Done — tested with fakes |
+| Worker loop with per-job time budget; unstarted jobs released without using attempts | Done — tested |
+| `/api/cron/tick` (and `/api/cron/sync` alias) | Builds; untested live |
+| Scheduler: Supabase pg_cron + pg_net every minute (SQL in `docs/SCHEDULER.md`), GitHub Actions backup every 5 min | Written; untested live |
+| Fully cloud-based — no dependency on the customer's computer | By design |
 
 ## Phase 5–6
 - [ ] Operational log view, retention job, app-level rate limiting
@@ -70,4 +82,5 @@ Legend: **Done** = implemented and covered by automated tests or a production bu
 - Real Fiverr samples for **new order, order update/delivery and payment** emails (from an active seller account)
 
 ## Known interim pieces
-- Sync is triggered by calling `/api/cron/sync`; Phase 4 moves work onto the durable job queue and sets up the free scheduler.
+- Delivery is at-least-once: a crash between Meta accepting a message and PingDesk recording it can cause a duplicate alert.
+- Vercel's free (Hobby) plan is for non-commercial use; choose hosting for a paid product in Phase 6.

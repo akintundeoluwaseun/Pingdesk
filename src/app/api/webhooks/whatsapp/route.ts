@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { classifyMetaError } from "@/lib/whatsapp/meta";
 import { failureOutcome } from "@/server/delivery/decide";
-import { whatsappClient } from "@/server/delivery/run";
+import { whatsappSender } from "@/server/jobs/runtime";
 import { parseWebhook, verifySignature } from "@/server/whatsapp/webhook";
 import { log } from "@/lib/log";
 
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       log.info("whatsapp.opt_change", { action: m.action });
       // The user just messaged us, so a free-form reply is inside the 24-hour window.
       try {
-        await whatsappClient().client.sendText(
+        await whatsappSender()?.client.sendText(
           m.phone,
           m.action === "stop"
             ? "You've stopped PingDesk alerts. Reply START to turn them back on."

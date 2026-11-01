@@ -110,14 +110,13 @@ describe("inbound STOP / START", () => {
 });
 
 describe("delivery claiming and recording", () => {
-  it("claims with preferences, phone and hourly count, and leases rows", async () => {
+  it("builds delivery context with preferences, phone and hourly count", async () => {
     await verified(user);
     await db.query("update public.notification_preferences set buyer_message = false where user_id = $1", [user]);
     const id = await notification(user);
-    const c = await db.query<Record<string, unknown>>("select * from public.claim_notifications_for_delivery(10, 120)");
+    const c = await db.query<Record<string, unknown>>("select * from public.delivery_context($1)", [id]);
     expect(c.rows).toHaveLength(1);
-    expect(c.rows[0]).toMatchObject({ id, category: "buyer_message", category_enabled: false, alerts_paused: false, phone_e164: PHONE, whatsapp_status: "verified", sent_last_hour: 0, timezone: "UTC" });
-    expect((await db.query("select * from public.claim_notifications_for_delivery(10, 120)")).rows).toHaveLength(0);
+    expect(c.rows[0]).toMatchObject({ id, status: "received", category: "buyer_message", category_enabled: false, alerts_paused: false, phone_e164: PHONE, whatsapp_status: "verified", sent_last_hour: 0, timezone: "UTC" });
   });
 
   it("records skip, submit, retry and permanent failure", async () => {
@@ -128,9 +127,6 @@ describe("delivery claiming and recording", () => {
     const b = await notification(user, { category: "payment" });
     await db.query("select public.record_delivery_attempt($1, 'retry', p_error_code => '131000', p_retry_at => now() + interval '2 minutes')", [b]);
     expect(await nrow(b)).toMatchObject({ status: "queued", delivery_attempts: 1 });
-    expect((await db.query("select * from public.claim_notifications_for_delivery(10, 120)")).rows).toHaveLength(0); // not due yet
-    await db.query("update public.notifications set next_attempt_at = now() - interval '1 second' where id = $1", [b]);
-    expect((await db.query<{ id: string }>("select * from public.claim_notifications_for_delivery(10, 120)")).rows.map((r) => r.id)).toEqual([b]);
     await db.query("select public.record_delivery_attempt($1, 'submitted', p_provider_message_id => 'wamid.B2', p_recipient_last4 => '4567')", [b]);
     expect(await nrow(b)).toMatchObject({ status: "delivering", delivery_attempts: 2, next_attempt_at: null, delivery_locked_until: null });
     const logs = await db.query<{ attempt: number; status: string }>("select attempt, status from public.delivery_logs where notification_id = $1 order by attempt", [b]);

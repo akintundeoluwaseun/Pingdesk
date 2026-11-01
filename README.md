@@ -16,7 +16,8 @@ src/app/auth/          email-link confirm, sign-out
 src/app/dashboard/     overview, inboxes, whatsapp, history, preferences, settings
 src/app/api/           google oauth, cron sync, whatsapp webhook
 src/server/gmail/      sync engine, Google adapter, run loop
-src/server/delivery/   preference checks, retries, WhatsApp delivery loop
+src/server/delivery/   preference checks and retry policy
+src/server/jobs/       queue worker, job handlers, tick runtime
 src/server/whatsapp/   verification codes, webhook parsing
 src/lib/               env, supabase clients, crypto, oauth-state, gmail, classifier, logger
 src/server/queries.ts  dashboard reads (always via the user's session → RLS)
@@ -52,13 +53,13 @@ tests/unit/            crypto, OAuth state, classifier, redirects
 Create a **Web** OAuth client in Google Cloud, enable the Gmail API, and add the redirect URI exactly:
 `http://localhost:3000/api/google/callback` (plus your production URL). PingDesk requests only `gmail.readonly`. That is a restricted scope: keep the app in **Testing** with named test users until Google verification (and possibly a security assessment) is complete.
 
-## Gmail sync
-`/api/cron/sync` (GET or POST, `Authorization: Bearer $INTERNAL_CRON_SECRET`) claims due inboxes and syncs them incrementally from Gmail history. Call it every 1–5 minutes. Free options: GitHub Actions `schedule`, Supabase `pg_cron` + `pg_net`, or an uptime pinger. (Vercel Hobby cron only runs daily.)
+## Background processing
+`/api/cron/tick` (GET or POST, `Authorization: Bearer $INTERNAL_CRON_SECRET`) enqueues due Gmail syncs and works the durable Postgres job queue (sync → detect → deliver). Schedule it every minute with Supabase pg_cron — see **[docs/SCHEDULER.md](docs/SCHEDULER.md)**. A GitHub Actions backup is in `.github/workflows/tick.yml`.
 
 Fiverr detection rules live in `src/lib/email/fiverr-rules.ts` and must be backed by a real, redacted fixture in `tests/fixtures/fiverr/`.
 
 ## Meta WhatsApp
-See **[docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md)** — templates to submit (exact wording), env vars, webhook, retry/opt-out behaviour and costs. `/api/cron/sync` runs Gmail sync and then WhatsApp delivery.
+See **[docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md)** — templates to submit (exact wording), env vars, webhook, retry/opt-out behaviour and costs. Delivery runs as `deliver_notification` jobs.
 
 ## Security model
 - Browser roles can only `SELECT` their own rows and update whitelisted columns (inbox label, preferences, profile). Everything else goes through server code.
