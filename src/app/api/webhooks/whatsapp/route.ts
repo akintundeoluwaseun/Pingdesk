@@ -1,16 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { classifyMetaError } from "@/lib/whatsapp/meta";
+import { failureOutcome } from "@/server/delivery/decide";
+import { whatsappClient } from "@/server/delivery/run";
+import { parseWebhook, verifySignature } from "@/server/whatsapp/webhook";
 import { log } from "@/lib/log";
 
 /**
- * Meta WhatsApp Cloud API webhook: verification handshake + delivery statuses.
- * Phase 3 extends this with inbound opt-in/opt-out messages, the 24-hour
- * window, pricing/usage capture and replay protection.
+ * Meta WhatsApp Cloud API webhook.
+ *  GET  — subscription handshake (hub.verify_token).
+ *  POST — signed (X-Hub-Signature-256) delivery statuses and inbound replies.
+ * Handlers are idempotent, so Meta's retries and replays are harmless.
  */
 export const runtime = "nodejs";
-
-const RANK: Record<string, number> = { pending: 0, submitted: 1, sent: 2, delivered: 3, read: 4, failed: 5 };
 
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
@@ -22,57 +25,72 @@ export async function GET(req: NextRequest) {
     token.length === expected.length &&
     timingSafeEqual(Buffer.from(token), Buffer.from(expected));
   const challenge = p.get("hub.challenge");
-  if (ok && challenge) return new NextResponse(challenge, { status: 200, headers: { "content-type": "text/plain" } });
+  if (ok && challenge && /^[\w-]{1,128}$/.test(challenge)) {
+    return new NextResponse(challenge, { status: 200, headers: { "content-type": "text/plain" } });
+  }
   return NextResponse.json({ error: "Webhook verification failed." }, { status: 403 });
 }
 
 export async function POST(req: NextRequest) {
-  const raw = await req.text();
-  const signature = req.headers.get("x-hub-signature-256") ?? "";
   const secret = process.env.META_WA_APP_SECRET;
   if (!secret) return NextResponse.json({ error: "Webhook not configured." }, { status: 503 });
-  const expected = "sha256=" + createHmac("sha256", secret).update(raw).digest("hex");
-  const a = Buffer.from(signature);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+  const raw = await req.text();
+  if (raw.length > 1_000_000) return NextResponse.json({ error: "Payload too large." }, { status: 413 });
+  if (!verifySignature(raw, req.headers.get("x-hub-signature-256"), secret)) {
     return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
   }
 
-  let payload: { entry?: { changes?: { value?: { statuses?: StatusEvent[] } }[] }[] };
+  let payload: unknown;
   try {
     payload = JSON.parse(raw);
   } catch {
     return NextResponse.json({ error: "Invalid JSON." }, { status: 400 });
   }
 
-  const statuses = (payload.entry ?? []).flatMap((e) => e.changes ?? []).flatMap((c) => c.value?.statuses ?? []);
+  const { statuses, inbound } = parseWebhook(payload);
   const db = supabaseAdmin();
+
   for (const s of statuses) {
-    if (!s.id || !(s.status in RANK)) continue;
-    const { data: row } = await db.from("delivery_logs").select("id,status").eq("provider_message_id", s.id).maybeSingle();
-    if (!row) continue;
-    // Statuses can arrive out of order; never move backwards (e.g. read -> delivered).
-    if (RANK[s.status] <= RANK[row.status as string] && s.status !== "failed") continue;
-    const at = s.timestamp ? new Date(Number(s.timestamp) * 1000).toISOString() : new Date().toISOString();
-    const update: Record<string, unknown> = { status: s.status, [`${s.status}_at`]: at };
+    let retryAt: string | null = null;
     if (s.status === "failed") {
-      update.error_code = s.errors?.[0]?.code?.toString() ?? null;
-      update.error_title = s.errors?.[0]?.title?.slice(0, 200) ?? null;
+      const { data: logRow } = await db.from("delivery_logs").select("attempt").eq("provider_message_id", s.providerMessageId).maybeSingle();
+      const err = classifyMetaError(200, { error: { code: s.errorCode ?? undefined, message: s.errorTitle ?? "failed" } });
+      const f = failureOutcome(err, logRow?.attempt ?? 1);
+      retryAt = f.retryAt?.toISOString() ?? null;
     }
-    if (s.pricing) {
-      update.pricing_category = s.pricing.category ?? null;
-      update.billable = s.pricing.billable ?? null;
+    const { error } = await db.rpc("apply_delivery_status", {
+      p_provider_message_id: s.providerMessageId,
+      p_status: s.status,
+      p_at: s.at,
+      p_error_code: s.errorCode?.toString() ?? null,
+      p_error_title: s.errorTitle,
+      p_pricing_category: s.pricingCategory,
+      p_billable: s.billable,
+      p_retry_at: retryAt,
+    });
+    if (error) log.error("whatsapp.status_apply_failed", { error_code: error.code });
+  }
+
+  for (const m of inbound) {
+    const { data: affected, error } = await db.rpc("whatsapp_inbound", { p_phone: m.phone, p_action: m.action });
+    if (error) {
+      log.error("whatsapp.inbound_failed", { error_code: error.code });
+      continue;
     }
-    const { error } = await db.from("delivery_logs").update(update).eq("id", row.id);
-    if (error) log.error("whatsapp.status_update_failed", { delivery_log_id: row.id, error_code: error.code });
+    if (m.action !== "message" && (affected ?? 0) > 0) {
+      log.info("whatsapp.opt_change", { action: m.action });
+      // The user just messaged us, so a free-form reply is inside the 24-hour window.
+      try {
+        await whatsappClient().client.sendText(
+          m.phone,
+          m.action === "stop"
+            ? "You've stopped PingDesk alerts. Reply START to turn them back on."
+            : "PingDesk alerts are back on. Reply STOP any time to pause them.",
+        );
+      } catch {
+        // Confirmation is best-effort; the opt-change itself is already saved.
+      }
+    }
   }
   return NextResponse.json({ received: true });
 }
-
-type StatusEvent = {
-  id?: string;
-  status: string;
-  timestamp?: string;
-  errors?: { code?: number; title?: string }[];
-  pricing?: { category?: string; billable?: boolean };
-};

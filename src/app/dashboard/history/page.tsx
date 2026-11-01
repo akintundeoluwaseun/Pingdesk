@@ -19,6 +19,7 @@ const SKIP_REASONS: Record<string, string> = {
   paused: "Alerts paused",
   no_whatsapp: "No verified WhatsApp number",
   unclassified: "Not a recognised notification",
+  stale: "Older than 6 hours when found",
 };
 
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {

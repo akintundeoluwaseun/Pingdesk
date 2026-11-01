@@ -38,10 +38,22 @@ Legend: **Done** = implemented and covered by automated tests or a production bu
 **Observed sender:** `noreply@e.fiverr.com` (transactional). `announce.fiverr.com` is marketing and is ignored.
 **Recognised subjects:** buyer messages, password reset, phone number added, selling eligibility. **No real samples yet for new order, order update or payment** — those arrive as *Unclassified* until samples are added.
 
-## Phase 3 — WhatsApp
-- [ ] Number entry, opt-in consent, one-time-code verification
-- [ ] Approved template delivery, STOP handling, 24-hour window tracking
-- [ ] Webhook replay protection and usage/pricing capture (status ordering already fixed)
+## Phase 3 — WhatsApp ✅ (code complete; live Meta run pending)
+
+| Item | State |
+|---|---|
+| Official Cloud API client (Graph v26.0, configurable), template + in-window text sends | Done — tested with a fake `fetch` |
+| Meta error classification: retryable vs permanent vs operator-config | Done — tested |
+| Number entry (E.164, Nigerian local format accepted), explicit consent with versioned opt-in | Done — tested |
+| One-time-code verification via authentication template; HMAC-stored codes, 10-min expiry, 5-try lock, resend cooldown, per-account and per-number limits | Done — DB functions tested |
+| Alert template with metadata only (type, inbox label, local time) | Done — tested |
+| Preference enforcement: pause, per-category, verified/opted-in, stale (> 6 h) skip, 30/hour per-user cap | Done — tested |
+| Delivery claiming with leases (SKIP LOCKED), atomic attempt recording | Done — tested |
+| Retries with exponential backoff (max 6 attempts) incl. failures reported later via webhook | Done — tested |
+| Webhook: signature check, statuses never regress, latest-attempt-only, pricing captured | Done — tested |
+| STOP / START replies with confirmation | Done — tested |
+| WhatsApp page: connect, verify, resend, change, remove, monthly usage | Builds; untested live |
+| Setup guide with exact template wording: `docs/WHATSAPP_SETUP.md` | Done |
 
 ## Phase 4 — Background processing
 - [ ] Queue functions (claim with `SKIP LOCKED` + leases, backoff, dead-letter) on the existing `jobs` table
@@ -54,7 +66,7 @@ Legend: **Done** = implemented and covered by automated tests or a production bu
 ## External requirements still open
 - Supabase project for PingDesk (none exists yet)
 - Google Cloud OAuth client; Gmail `readonly` is a restricted scope → test users only until Google verification/security assessment
-- Meta Business + WhatsApp Cloud API app, phone number, **approved utility template**
+- Meta Business + WhatsApp Cloud API app, phone number, System User token, **approved alert (utility) and verification (authentication) templates** — see `docs/WHATSAPP_SETUP.md`
 - Real Fiverr samples for **new order, order update/delivery and payment** emails (from an active seller account)
 
 ## Known interim pieces

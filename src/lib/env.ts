@@ -26,7 +26,9 @@ const whatsapp = z.object({
   META_WA_VERIFY_TOKEN: z.string().min(16),
   META_WA_APP_SECRET: z.string().min(1),
   META_WA_TEMPLATE_ALERT: z.string().min(1),
+  META_WA_TEMPLATE_VERIFY: z.string().min(1),
   META_WA_TEMPLATE_LANGUAGE: z.string().min(2).default("en"),
+  META_WA_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default("v26.0"),
 });
 
 export class ConfigError extends Error {

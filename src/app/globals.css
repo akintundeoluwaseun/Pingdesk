@@ -1176,3 +1176,26 @@ footer span {
     max-width: 1080px;
   }
 }
+
+/* WhatsApp */
+.consent {
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.consent input {
+  margin-top: 3px;
+  flex: none;
+}
+.code-input {
+  font: 600 22px/1 Manrope, sans-serif !important;
+  letter-spacing: 6px;
+  max-width: 220px;
+}
+.wa-meta {
+  margin: 12px 0 4px;
+}
+.narrow {
+  max-width: 520px;
+}

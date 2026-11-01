@@ -97,6 +97,21 @@ export async function getPreferences() {
   ) as Preferences | null;
 }
 
+/** WhatsApp sends attempted this calendar month (UTC), from the user's own delivery logs. */
+export async function getMonthlyUsage() {
+  const db = await supabaseServer();
+  const start = new Date();
+  start.setUTCDate(1);
+  start.setUTCHours(0, 0, 0, 0);
+  const res = await db
+    .from("delivery_logs")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", start.toISOString())
+    .neq("status", "failed");
+  if (res.error) throw new QueryError("Could not load usage.");
+  return res.count ?? 0;
+}
+
 export async function getProfile() {
   const db = await supabaseServer();
   return check(await db.from("profiles").select("full_name,timezone").maybeSingle(), "profile") as Profile | null;

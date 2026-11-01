@@ -16,6 +16,8 @@ src/app/auth/          email-link confirm, sign-out
 src/app/dashboard/     overview, inboxes, whatsapp, history, preferences, settings
 src/app/api/           google oauth, cron sync, whatsapp webhook
 src/server/gmail/      sync engine, Google adapter, run loop
+src/server/delivery/   preference checks, retries, WhatsApp delivery loop
+src/server/whatsapp/   verification codes, webhook parsing
 src/lib/               env, supabase clients, crypto, oauth-state, gmail, classifier, logger
 src/server/queries.ts  dashboard reads (always via the user's session → RLS)
 src/proxy.ts           session refresh + /dashboard guard
@@ -56,7 +58,7 @@ Create a **Web** OAuth client in Google Cloud, enable the Gmail API, and add the
 Fiverr detection rules live in `src/lib/email/fiverr-rules.ts` and must be backed by a real, redacted fixture in `tests/fixtures/fiverr/`.
 
 ## Meta WhatsApp
-Needs a Meta Business account, a WhatsApp Cloud API app, a phone number and an **approved utility template**. Webhook URL: `/api/webhooks/whatsapp`, verify token = `META_WA_VERIFY_TOKEN`. Business-initiated messages outside the 24-hour window must be templates and may be billed by Meta.
+See **[docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md)** — templates to submit (exact wording), env vars, webhook, retry/opt-out behaviour and costs. `/api/cron/sync` runs Gmail sync and then WhatsApp delivery.
 
 ## Security model
 - Browser roles can only `SELECT` their own rows and update whitelisted columns (inbox label, preferences, profile). Everything else goes through server code.

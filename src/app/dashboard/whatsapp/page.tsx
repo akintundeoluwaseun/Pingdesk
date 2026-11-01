@@ -1,64 +1,80 @@
 import { MessageCircle, ShieldCheck } from "lucide-react";
-import { getWhatsApp } from "@/server/queries";
+import { getWhatsApp, getMonthlyUsage } from "@/server/queries";
 import { isConfigured } from "@/lib/env";
 import { EmptyState, ErrorPanel, PageHeader, formatDateTime } from "@/components/ui";
+import { ChangeNumber, CodeForm, PhoneForm, RemoveNumber } from "./forms";
 
 export const metadata = { title: "WhatsApp — PingDesk" };
 
 export default async function WhatsAppPage() {
   let wa: Awaited<ReturnType<typeof getWhatsApp>>;
+  let usage = 0;
   try {
-    wa = await getWhatsApp();
+    [wa, usage] = await Promise.all([getWhatsApp(), getMonthlyUsage()]);
   } catch (e) {
     return <ErrorPanel message={e instanceof Error ? e.message : "Unknown error."} />;
   }
-  const senderReady = isConfigured("whatsapp");
+  const ready = isConfigured("whatsapp");
 
   return (
     <>
       <PageHeader
         eyebrow="DELIVERY"
         title="WhatsApp"
-        description="Alerts are sent from PingDesk's official WhatsApp Business number to a number you verify. Alerts say what happened and link you back to Fiverr — message contents are never forwarded."
+        description="Alerts come from PingDesk's official WhatsApp Business number. They say what happened and when — never the message contents — and point you back to Fiverr."
       />
-      {wa ? (
+
+      {!ready ? (
+        <EmptyState
+          icon={<MessageCircle size={20} />}
+          title="WhatsApp delivery isn't available yet"
+          body="PingDesk's WhatsApp Business sender is still awaiting setup and Meta template approval. Your alerts are being recorded in History in the meantime."
+        />
+      ) : !wa ? (
+        <section className="panel">
+          <h2>Connect your WhatsApp</h2>
+          <PhoneForm />
+        </section>
+      ) : wa.status === "pending_verification" ? (
+        <section className="panel">
+          <h2>Enter your code</h2>
+          <CodeForm phoneLast4={wa.phone_e164.slice(-4)} />
+        </section>
+      ) : (
         <section className="panel">
           <div className="list-row">
             <MessageCircle size={18} aria-hidden />
             <div className="grow">
-              <b>Number ending {wa.phone_e164.slice(-4)}</b>
+              <b>WhatsApp ending {wa.phone_e164.slice(-4)}</b>
               <small>
                 {wa.status === "verified" && wa.verified_at
                   ? `Verified ${formatDateTime(wa.verified_at)}`
-                  : wa.status === "opted_out"
-                    ? "You opted out. No alerts are sent."
-                    : "Waiting for verification"}
+                  : "You replied STOP, so alerts are paused. Reply START on WhatsApp to turn them back on."}
               </small>
             </div>
-            <span className={`badge badge-${wa.status === "verified" ? "success" : wa.status === "opted_out" ? "muted" : "warning"}`}>
-              {wa.status === "verified" ? "Verified" : wa.status === "opted_out" ? "Opted out" : "Pending"}
-            </span>
+            <span className={`badge badge-${wa.status === "verified" ? "success" : "muted"}`}>{wa.status === "verified" ? "Verified" : "Stopped"}</span>
+          </div>
+          <dl className="meta wa-meta">
+            <div>
+              <dt>Alerts sent this month</dt>
+              <dd>{usage.toLocaleString()}</dd>
+            </div>
+          </dl>
+          <div className="card-actions">
+            <ChangeNumber />
+            <RemoveNumber />
           </div>
         </section>
-      ) : (
-        <EmptyState
-          icon={<MessageCircle size={20} />}
-          title="No WhatsApp number yet"
-          body={
-            senderReady
-              ? "Number verification is being finalised and will appear here shortly."
-              : "WhatsApp delivery isn't available yet: PingDesk's WhatsApp Business sender is still awaiting setup and Meta template approval."
-          }
-        />
       )}
+
       <section className="panel subtle">
         <div className="list-row">
           <ShieldCheck size={18} aria-hidden />
           <div className="grow">
             <b>How consent works</b>
             <small>
-              You opt in explicitly, confirm the number with a one-time code, and can reply STOP or remove the number any time. WhatsApp
-              business messages may be billed per message by Meta.
+              You opt in on this page and confirm the number with a one-time code. Reply STOP on WhatsApp or remove the number here to stop
+              alerts at any time.
             </small>
           </div>
         </div>
