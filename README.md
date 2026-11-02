@@ -4,6 +4,8 @@ Cloud-hosted, notification-only bridge that watches an authorized Gmail inbox fo
 
 PingDesk never asks for Gmail or Fiverr passwords, never scrapes Fiverr, and never forwards buyer message contents.
 
+**Start here: [docs/LAUNCH_GUIDE.md](docs/LAUNCH_GUIDE.md)** — step-by-step setup, connecting Google and Meta, and how to test each part.
+
 See **[docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)** for exactly what is done, tested, and still pending.
 
 ## Stack
