@@ -1,0 +1,33 @@
+{
+  "source": "Synthetic case modelled on a real Fiverr-impersonation scam reported by the project owner (screenshot only, no headers). Addresses are placeholders. Sent from a free webmail account with a 'Fiverr - #<number>' display name; DMARC genuinely passes, but for the webmail domain.",
+  "expect": {
+    "accepted": false,
+    "reason": "not_fiverr"
+  },
+  "message": {
+    "id": "scam-project-notification-freemail",
+    "threadId": "scam-project-notification-freemail",
+    "internalDate": "1793530680000",
+    "labelIds": [
+      "INBOX"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=pass header.i=@gmail.example header.s=20230601; spf=pass smtp.mailfrom=project.updates.desk@gmail.example; dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.example"
+      },
+      {
+        "name": "From",
+        "value": "\"Fiverr - #901815392\" <project.updates.desk@gmail.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "Project Notification"
+      },
+      {
+        "name": "Date",
+        "value": "Sun, 01 Nov 2026 10:58:00 +0000"
+      }
+    ]
+  }
+}

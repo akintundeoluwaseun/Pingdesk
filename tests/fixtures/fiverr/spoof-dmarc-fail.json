@@ -1,0 +1,38 @@
+{
+  "source": "Synthetic negative case built from the real header layout.",
+  "expect": {
+    "accepted": false,
+    "reason": "auth_failed"
+  },
+  "message": {
+    "id": "spoof-dmarc-fail",
+    "threadId": "spoof-dmarc-fail",
+    "internalDate": "1791902195000",
+    "labelIds": [
+      "INBOX",
+      "CATEGORY_UPDATES"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=none; spf=fail smtp.mailfrom=noreply@e.fiverr.com; dmarc=fail (p=QUARANTINE sp=QUARANTINE dis=QUARANTINE) header.from=e.fiverr.com"
+      },
+      {
+        "name": "From",
+        "value": "Fiverr <noreply@e.fiverr.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "You’ve got new messages from attacker"
+      },
+      {
+        "name": "Date",
+        "value": "Tue, 13 Oct 2026 14:36:35 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<redacted@emails.mail>"
+      }
+    ]
+  }
+}

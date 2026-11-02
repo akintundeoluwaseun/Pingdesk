@@ -1,0 +1,38 @@
+{
+  "source": "Synthetic negative case built from the real header layout. DMARC passes for From but DKIM only for an unrelated domain (misaligned).",
+  "expect": {
+    "accepted": false,
+    "reason": "auth_failed"
+  },
+  "message": {
+    "id": "spoof-dkim-other-domain",
+    "threadId": "spoof-dkim-other-domain",
+    "internalDate": "1791902195000",
+    "labelIds": [
+      "INBOX",
+      "CATEGORY_UPDATES"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=pass header.i=@evil.test header.s=x; spf=pass smtp.mailfrom=e.fiverr.com; dmarc=pass header.from=e.fiverr.com"
+      },
+      {
+        "name": "From",
+        "value": "Fiverr <noreply@e.fiverr.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Reset your Fiverr password"
+      },
+      {
+        "name": "Date",
+        "value": "Tue, 13 Oct 2026 14:36:35 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<redacted@emails.mail>"
+      }
+    ]
+  }
+}

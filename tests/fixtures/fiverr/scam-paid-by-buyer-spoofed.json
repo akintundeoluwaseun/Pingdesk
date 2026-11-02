@@ -1,0 +1,33 @@
+{
+  "source": "Synthetic case modelled on a real Fiverr-impersonation scam reported by the project owner (screenshot only, no headers). Addresses are placeholders. Fake 'Paid by Buyer \u2014 awaiting your acceptance' email that forges the real Fiverr address but fails Gmail's checks.",
+  "expect": {
+    "accepted": false,
+    "reason": "auth_failed"
+  },
+  "message": {
+    "id": "scam-paid-by-buyer-spoofed",
+    "threadId": "scam-paid-by-buyer-spoofed",
+    "internalDate": "1793530680000",
+    "labelIds": [
+      "INBOX"
+    ],
+    "headers": [
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com; dkim=fail header.i=@e.fiverr.com; spf=fail smtp.mailfrom=bounce@mailer.example; dmarc=fail (p=QUARANTINE sp=QUARANTINE dis=QUARANTINE) header.from=e.fiverr.com"
+      },
+      {
+        "name": "From",
+        "value": "Fiverr <noreply@e.fiverr.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Order received \u2014 Paid by Buyer, awaiting your acceptance"
+      },
+      {
+        "name": "Date",
+        "value": "Sun, 01 Nov 2026 10:58:00 +0000"
+      }
+    ]
+  }
+}

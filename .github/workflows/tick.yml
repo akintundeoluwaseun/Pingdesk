@@ -1,0 +1,41 @@
+# Backup scheduler for PingDesk. The primary scheduler is Supabase pg_cron
+# (every minute, see docs/SCHEDULER.md). GitHub's scheduled runs can be delayed
+# by several minutes, so this is a safety net, not the main trigger.
+#
+# Setup: repo Settings → Secrets and variables → Actions → add
+#   PINGDESK_URL          e.g. https://pingdesk.example.com   (no trailing slash)
+#   INTERNAL_CRON_SECRET  same value as the app's env var
+# Without both secrets this workflow does nothing.
+name: PingDesk tick
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pingdesk-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Call /api/cron/tick
+        env:
+          PINGDESK_URL: ${{ secrets.PINGDESK_URL }}
+          CRON_SECRET: ${{ secrets.INTERNAL_CRON_SECRET }}
+        run: |
+          if [ -z "$PINGDESK_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Secrets not configured; skipping."
+            exit 0
+          fi
+          status=$(curl -sS -o /tmp/out.json -w "%{http_code}" --max-time 90 \
+            -X POST -H "Authorization: Bearer $CRON_SECRET" "$PINGDESK_URL/api/cron/tick")
+          echo "HTTP $status"
+          # Print only the summary counts, never secrets.
+          head -c 2000 /tmp/out.json; echo
+          [ "$status" -lt 500 ]
