@@ -15,19 +15,23 @@
 - [x] Database schema and RLS policies
 
 ## Must be completed before real customer use
-- [ ] Add Supabase Auth UI/middleware and account settings
+- [x] Add Supabase Auth UI/middleware and account settings
 - [ ] Validate OAuth callback, refresh-token behavior and account-linking edge cases
-- [ ] Add Google userinfo/profile consent and disconnect/revoke flow
+- [x] Add Google userinfo/profile consent and disconnect/revoke flow
 - [ ] Verify sender domains from real authorized Fiverr notification samples
-- [ ] Add parser tests and email authentication checks (SPF/DKIM/DMARC evidence)
-- [ ] Add durable notification-delivery worker with preference/opt-in enforcement
-- [ ] Add approved Meta template and WhatsApp number ownership verification flow
-- [ ] Add webhook idempotency and robust error handling
+- [x] Email authentication checks (DKIM/DMARC from Authentication-Results)
+- [ ] Parser tests against real redacted Fiverr samples
+- [x] Add durable notification-delivery worker with preference/opt-in enforcement
+- [ ] Add approved Meta template
+- [ ] WhatsApp number ownership check (e.g. confirm with a reply or code)
+- [ ] Password reset page
+- [x] Add webhook idempotency and robust error handling
 - [ ] Add rate limiting, audit logging, retention and deletion workflows
-- [ ] Add Gmail reconciliation with persisted historyId and pagination
-- [ ] Deploy worker/cron and configure monitoring
+- [x] Add Gmail reconciliation with persisted historyId and pagination
+- [x] Scheduler (GitHub Actions workflow, any external cron)
+- [ ] Deploy and configure monitoring
 - [ ] Complete applicable Google OAuth verification and Meta business requirements
 - [ ] Security review and end-to-end pilot
 
 ## Important
-The sync route currently looks back 24 hours and relies on database uniqueness to avoid duplicates. It is a temporary pilot implementation, not a scalable production sync strategy. Replace it with Gmail historyId-based incremental synchronization and a durable queue before production.
+Sync uses Gmail `historyId` with pagination (capped at 200 messages per inbox per run) and falls back to a 24-hour window when history is missing. Delivery claims each alert row before sending, so overlapping runs don't double-send. For many users, move to Gmail push (Pub/Sub `watch`) instead of polling.

@@ -3,6 +3,14 @@
 A cloud-hosted, notification-only email-to-WhatsApp alert service. This repository is a development scaffold; live integrations require your own Google and Meta credentials, provider verification and real sample emails.
 
 ## Current implementation
+- Sign up / sign in with Supabase Auth (email + password), session middleware, protected pages
+- Dashboard: setup checklist, connected inboxes with sync status, recent alerts with delivery status, disconnect (revokes the Google token)
+- Settings: WhatsApp number (international format), opt-in, time zone, per-category toggles, test alert
+- Gmail sync by `historyId` (falls back to a 24-hour window on first run or expired history), marks inboxes `needs_reauth` on revoked tokens
+- Sender check against `FIVERR_VERIFIED_SENDER_DOMAINS` plus DKIM/DMARC from Gmail's `Authentication-Results`
+- Delivery worker: claims queued alerts, honours opt-in and categories, logs every attempt, retries rate limits and server errors (up to 4 attempts)
+- WhatsApp status webhook that only moves a delivery forward (sent → delivered → read)
+- `/api/cron/sync` (sync + deliver) and `/api/cron/deliver`, plus a GitHub Actions schedule every 5 minutes
 - Next.js dashboard shell
 - Supabase server and service clients
 - Google OAuth start/callback routes with signed state cookie
@@ -31,7 +39,20 @@ Node.js 20+, npm, Supabase project, Google Cloud project and Meta developer/busi
 3. `npm install`
 4. `npm run dev`
 
-Run the SQL in `supabase/schema.sql` in Supabase SQL Editor.
+Run `supabase/schema.sql`, then `supabase/002_delivery_and_security.sql`, in the Supabase SQL Editor.
+
+In Supabase → Authentication → URL Configuration, set the Site URL to your app URL and add `<app-url>/auth/callback` to the redirect URLs (used by the email confirmation link).
+
+## Running the sync
+`POST /api/cron/sync` with `Authorization: Bearer $INTERNAL_CRON_SECRET` checks every active inbox and sends due alerts. Schedule it every few minutes with any of:
+- the included GitHub Actions workflow (set repo secrets `PINGDESK_URL` and `INTERNAL_CRON_SECRET`)
+- cron-job.org or another external scheduler
+- Vercel Cron (Hobby plans only allow daily runs, so use one of the above there)
+
+## WhatsApp template
+Create a **Utility** template with three body variables, e.g.:
+`New {{2}} in {{1}} at {{3}}. Open Fiverr to view it.`
+{{1}} is the inbox address, {{2}} the category ("Order update"), {{3}} the time in the user's time zone.
 
 ## Google OAuth
 Create a Web OAuth client. Add the exact redirect URI:

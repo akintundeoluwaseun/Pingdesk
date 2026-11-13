@@ -1,0 +1,19 @@
+# Calls the PingDesk sync endpoint every 5 minutes (GitHub may delay scheduled runs by a few minutes).
+# Set two repository secrets: PINGDESK_URL (e.g. https://pingdesk.vercel.app) and INTERNAL_CRON_SECRET.
+name: PingDesk sync
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Run sync and delivery
+        env:
+          URL: ${{ secrets.PINGDESK_URL }}
+          SECRET: ${{ secrets.INTERNAL_CRON_SECRET }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$SECRET" ]; then echo "PINGDESK_URL or INTERNAL_CRON_SECRET not set; skipping."; exit 0; fi
+          curl -fsS --max-time 90 -X POST -H "Authorization: Bearer $SECRET" "$URL/api/cron/sync"
