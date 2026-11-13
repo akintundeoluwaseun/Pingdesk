@@ -23,7 +23,7 @@
 - [ ] Parser tests against real redacted Fiverr samples
 - [x] Add durable notification-delivery worker with preference/opt-in enforcement
 - [ ] Add approved Meta template
-- [ ] WhatsApp number ownership check (e.g. confirm with a reply or code)
+- [x] WhatsApp number ownership check (6-digit code)
 - [ ] Password reset page
 - [x] Add webhook idempotency and robust error handling
 - [ ] Add rate limiting, audit logging, retention and deletion workflows

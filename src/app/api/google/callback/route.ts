@@ -38,12 +38,19 @@ export async function GET(req: NextRequest) {
     const profile = await gmail.users.getProfile({ userId: "me" });
     const email = profile.data.emailAddress;
     if (!email) return done("error", "Couldn't read the Gmail address.");
-    const { error } = await supabaseAdmin.from("connected_inboxes").upsert({
-      user_id: user.id, provider: "gmail", email_address: email, display_name: email,
-      encrypted_refresh_token: encryptSecret(tokens.refresh_token), status: "active",
-      last_history_id: null, last_error: null,
-    }, { onConflict: "user_id,provider,email_address" });
-    if (error) throw error;
+    const address = email.toLowerCase();
+    const { data: inbox, error } = await supabaseAdmin.from("connected_inboxes").upsert({
+      user_id: user.id, provider: "gmail", email_address: address, label: address.slice(0, 60),
+      status: "active", last_history_id: null, last_error_code: null, last_error_at: null,
+      consecutive_failures: 0, disconnected_at: null, connected_at: new Date().toISOString(),
+    }, { onConflict: "user_id,provider,email_address" }).select("id").single();
+    if (error || !inbox) throw error ?? new Error("inbox upsert failed");
+    // The refresh token lives in its own table that browsers can never read.
+    const { error: credError } = await supabaseAdmin.from("inbox_credentials").upsert({
+      inbox_id: inbox.id, user_id: user.id, encrypted_refresh_token: encryptSecret(tokens.refresh_token),
+      key_version: 1, granted_scopes: tokens.scope ?? GMAIL_SCOPE,
+    }, { onConflict: "inbox_id" });
+    if (credError) throw credError;
     return done("connected", email);
   } catch (e) {
     console.error("google callback", e);

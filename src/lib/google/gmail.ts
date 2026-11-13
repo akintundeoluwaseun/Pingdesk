@@ -47,6 +47,7 @@ export async function getMessageMetadata(gmail: gmail_v1.Gmail, messageId: strin
   const read = (name: string) => headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
   return {
     id: messageId,
+    threadId: r.data.threadId ?? null,
     from: read("From"),
     subject: read("Subject"),
     authResults: read("Authentication-Results"),
@@ -59,6 +60,14 @@ export function statusOf(e: unknown): number | undefined {
   const x = e as { code?: unknown; status?: unknown; response?: { status?: number } };
   const n = Number(x?.response?.status ?? x?.status ?? x?.code);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/** Short machine-readable code for connected_inboxes.last_error_code. */
+export function errorCode(e: unknown) {
+  if (isInvalidGrant(e)) return "invalid_grant";
+  const st = statusOf(e);
+  if (st) return `http_${st}`;
+  return ((e as { code?: string })?.code ?? "sync_failed").toString().slice(0, 64);
 }
 
 /** True when Google says the refresh token is revoked or expired. */

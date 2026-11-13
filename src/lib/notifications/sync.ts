@@ -1,21 +1,24 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/security/crypto";
-import { gmailClient, getMessageMetadata, isInvalidGrant, listAddedMessageIdsSince, listMessageIdsSince } from "@/lib/google/gmail";
-import { classifyFiverrEmail } from "@/lib/email/classify";
+import { errorCode, gmailClient, getMessageMetadata, isInvalidGrant, listAddedMessageIdsSince, listMessageIdsSince } from "@/lib/google/gmail";
+import { authEvidence, classifyFiverrEmail, senderDomain } from "@/lib/email/classify";
 import { fingerprint } from "./fingerprint";
 
 const FIRST_SYNC_LOOKBACK_S = 60 * 60 * 24;
 
-type Inbox = { id: string; user_id: string; email_address: string; encrypted_refresh_token: string; last_history_id: string | null };
+/** Row shape returned by the claim_inboxes_for_sync() database function. */
+type ClaimedInbox = { id: string; user_id: string; label: string; email_address: string; last_history_id: string | null; encrypted_refresh_token: string };
 
-export async function syncInbox(inbox: Inbox) {
-  const gmail = gmailClient(decryptSecret(inbox.encrypted_refresh_token));
+export async function syncInbox(inbox: ClaimedInbox) {
+  let latestHistoryId: string | null = null;
   try {
+    const gmail = gmailClient(decryptSecret(inbox.encrypted_refresh_token));
     // Read the current historyId first so nothing that arrives during this run is skipped next time.
     const profile = await gmail.users.getProfile({ userId: "me" });
-    const latestHistoryId = profile.data.historyId ?? null;
+    latestHistoryId = profile.data.historyId ?? null;
 
     let ids = inbox.last_history_id ? await listAddedMessageIdsSince(gmail, inbox.last_history_id) : null;
+    const reconciled = ids === null;
     if (ids === null) ids = await listMessageIdsSince(gmail, Math.floor(Date.now() / 1000) - FIRST_SYNC_LOOKBACK_S);
 
     let created = 0;
@@ -24,38 +27,33 @@ export async function syncInbox(inbox: Inbox) {
       if (meta.labelIds.includes("SENT") || meta.labelIds.includes("SPAM")) continue;
       const category = classifyFiverrEmail(meta);
       if (!category) continue;
+      const domain = senderDomain(meta.from);
       const { error } = await supabaseAdmin.from("notifications").insert({
-        user_id: inbox.user_id, inbox_id: inbox.id, source_message_id: id, category,
-        subject: meta.subject.slice(0, 300), received_at: meta.internalDate,
-        fingerprint: fingerprint(inbox.id, id), processing_status: "queued",
+        user_id: inbox.user_id, inbox_id: inbox.id, gmail_message_id: id, gmail_thread_id: meta.threadId,
+        category, inbox_label: inbox.label, sender_domain: domain, subject: meta.subject.slice(0, 300) || null,
+        auth_evidence: authEvidence(meta.authResults, domain),
+        received_at: meta.internalDate ?? new Date().toISOString(),
+        fingerprint: fingerprint(inbox.id, id), status: "queued",
       });
       if (!error) created++;
       else if (error.code !== "23505") throw error; // 23505 = already stored
     }
 
-    await supabaseAdmin.from("connected_inboxes")
-      .update({ last_history_id: latestHistoryId, last_synced_at: new Date().toISOString(), last_error: null })
-      .eq("id", inbox.id);
+    await supabaseAdmin.rpc("finish_inbox_sync", { p_inbox_id: inbox.id, p_history_id: latestHistoryId, p_reconciled: reconciled, p_error_code: null, p_needs_reauth: false });
     return { inbox: inbox.email_address, scanned: ids.length, created };
   } catch (e) {
-    const reauth = isInvalidGrant(e);
-    const message = reauth ? "Google access was revoked or expired. Reconnect Gmail." : e instanceof Error ? e.message : "Sync failed";
-    await supabaseAdmin.from("connected_inboxes")
-      .update({ ...(reauth ? { status: "needs_reauth" } : {}), last_error: message.slice(0, 500) })
-      .eq("id", inbox.id);
-    return { inbox: inbox.email_address, error: message };
+    const code = errorCode(e);
+    // On a non-auth error keep the old historyId so the next run retries the same window.
+    await supabaseAdmin.rpc("finish_inbox_sync", { p_inbox_id: inbox.id, p_history_id: null, p_reconciled: false, p_error_code: code, p_needs_reauth: isInvalidGrant(e) });
+    return { inbox: inbox.email_address, error: code };
   }
 }
 
-export async function syncAllInboxes(limit = 50) {
-  const { data, error } = await supabaseAdmin
-    .from("connected_inboxes")
-    .select("id,user_id,email_address,encrypted_refresh_token,last_history_id")
-    .eq("status", "active")
-    .order("last_synced_at", { ascending: true, nullsFirst: true })
-    .limit(limit);
-  if (error) throw new Error("Could not load inboxes.");
+/** Leases due inboxes in the database (so overlapping runs never sync the same inbox) and syncs them. */
+export async function syncAllInboxes(limit = 10) {
+  const { data, error } = await supabaseAdmin.rpc("claim_inboxes_for_sync", { p_limit: limit, p_lease_seconds: 120, p_min_interval_seconds: 60 });
+  if (error) throw new Error(`Could not claim inboxes: ${error.message}`);
   const results = [];
-  for (const inbox of data ?? []) results.push(await syncInbox(inbox));
+  for (const inbox of (data ?? []) as ClaimedInbox[]) results.push(await syncInbox(inbox));
   return results;
 }
