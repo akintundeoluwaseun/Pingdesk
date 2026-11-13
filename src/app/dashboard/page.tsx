@@ -3,6 +3,7 @@ import { Mail, MessageCircle, CheckCircle2, Circle, AlertTriangle } from "lucide
 import { AppNav, Flash } from "@/components/AppNav";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { requireUser } from "@/lib/auth/user";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { whatsappConfigured } from "@/lib/whatsapp/send";
 import { CATEGORY_LABEL, type AlertCategory } from "@/lib/email/classify";
 import { disconnectInbox } from "@/app/settings/actions";
@@ -10,10 +11,11 @@ import { disconnectInbox } from "@/app/settings/actions";
 export const metadata = { title: "Dashboard · PingDesk" };
 export const dynamic = "force-dynamic";
 
-type Inbox = { id: string; email_address: string; status: string; last_synced_at: string | null; last_error: string | null };
-type Row = { id: string; category: AlertCategory; subject: string | null; received_at: string | null; created_at: string; processing_status: string; skip_reason: string | null; delivery_logs: { delivery_status: string; created_at: string }[] };
+type Inbox = { id: string; email_address: string; status: string; last_synced_at: string | null; last_error_code: string | null };
+type Row = { id: string; category: AlertCategory; subject: string | null; received_at: string; status: string; skip_reason: string | null; delivery_logs: { status: string; attempt: number }[] };
 
-const SKIP: Record<string, string> = { no_opt_in: "WhatsApp alerts off", no_number: "No WhatsApp number", category_off: "Category turned off" };
+const SKIP: Record<string, string> = { alerts_paused: "Alerts paused", category_off: "Category turned off", no_whatsapp: "No WhatsApp number", opted_out: "WhatsApp alerts off", whatsapp_unverified: "Number not verified" };
+const ERRORS: Record<string, string> = { invalid_grant: "Google access expired. Reconnect to keep getting alerts.", http_403: "Google refused access. Reconnect and allow Gmail access.", http_429: "Gmail is rate-limiting PingDesk. It will retry shortly." };
 
 function ago(iso: string | null) {
   if (!iso) return "never";
@@ -25,14 +27,14 @@ function ago(iso: string | null) {
 }
 
 function statusOf(r: Row) {
-  const last = [...(r.delivery_logs ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]?.delivery_status;
-  if (r.processing_status === "ignored") return { label: SKIP[r.skip_reason ?? ""] ?? "Skipped", tone: "grey" };
-  if (r.processing_status === "failed") return { label: "Failed", tone: "red" };
-  if (r.processing_status === "queued" || r.processing_status === "processing") return { label: last === "failed" ? "Retrying" : "Waiting", tone: "amber" };
-  if (last === "read") return { label: "Read", tone: "green" };
-  if (last === "delivered") return { label: "Delivered", tone: "green" };
-  if (last === "failed") return { label: "Not delivered", tone: "red" };
-  return { label: "Sent", tone: "green" };
+  const last = [...(r.delivery_logs ?? [])].sort((a, b) => b.attempt - a.attempt)[0]?.status;
+  switch (r.status) {
+    case "skipped": return { label: SKIP[r.skip_reason ?? ""] ?? "Skipped", tone: "grey" };
+    case "failed": return { label: "Failed", tone: "red" };
+    case "delivered": return { label: last === "read" ? "Read" : "Delivered", tone: "green" };
+    case "delivering": return { label: "Sent", tone: "green" };
+    default: return { label: last === "failed" ? "Retrying" : "Waiting", tone: "amber" };
+  }
 }
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -40,22 +42,22 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { supabase, user } = await requireUser("/dashboard");
   const since = new Date(); since.setHours(0, 0, 0, 0);
 
-  const [{ data: inboxes }, { data: prefs }, { data: rows }, { count: today }] = await Promise.all([
-    supabase.from("connected_inboxes").select("id,email_address,status,last_synced_at,last_error").order("created_at"),
-    supabase.from("notification_preferences").select("whatsapp_number,whatsapp_opt_in").eq("user_id", user.id).maybeSingle(),
-    supabase.from("notifications").select("id,category,subject,received_at,created_at,processing_status,skip_reason,delivery_logs(delivery_status,created_at)").order("created_at", { ascending: false }).limit(25),
-    supabase.from("notifications").select("id", { count: "exact", head: true }).gte("created_at", since.toISOString()),
+  const [{ data: inboxes }, { data: wa }, { data: rows }, { count: today }] = await Promise.all([
+    supabase.from("connected_inboxes").select("id,email_address,status,last_synced_at,last_error_code").neq("status", "disconnected").order("created_at"),
+    supabaseAdmin.from("whatsapp_connections").select("status").eq("user_id", user.id).maybeSingle(),
+    supabase.from("notifications").select("id,category,subject,received_at,status,skip_reason,delivery_logs(status,attempt)").order("received_at", { ascending: false }).limit(25),
+    supabase.from("notifications").select("id", { count: "exact", head: true }).gte("received_at", since.toISOString()),
   ]);
   const list = (inboxes ?? []) as Inbox[];
   const alerts = (rows ?? []) as Row[];
-  const counted = alerts.filter((r) => r.processing_status !== "ignored");
+  const counted = alerts.filter((r) => r.status !== "skipped");
   const delivered = counted.filter((r) => ["Delivered", "Read", "Sent"].includes(statusOf(r).label)).length;
   const hasInbox = list.some((i) => i.status === "active");
-  const hasWhatsApp = Boolean(prefs?.whatsapp_opt_in && prefs.whatsapp_number);
+  const hasWhatsApp = wa?.status === "verified";
   const serverReady = whatsappConfigured();
   const steps = [
     { done: hasInbox, label: "Connect a Gmail inbox", href: "/api/google/connect", cta: "Connect Gmail" },
-    { done: hasWhatsApp, label: "Add your WhatsApp number and turn alerts on", href: "/settings", cta: "Open settings" },
+    { done: hasWhatsApp, label: "Add and verify your WhatsApp number", href: "/settings", cta: "Open settings" },
   ];
 
   return (
@@ -90,11 +92,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <span className={"tile" + (i.status === "active" ? " green" : "")}>{i.status === "active" ? <Mail /> : <AlertTriangle />}</span>
             <div>
               <b>{i.email_address}</b>
-              <p>{i.status === "active" ? `Checked ${ago(i.last_synced_at)}` : i.status === "needs_reauth" ? "Google access expired. Reconnect to keep getting alerts." : i.status}</p>
-              {i.last_error && i.status === "active" && <p className="err-text">{i.last_error}</p>}
+              <p>{i.status === "active" ? `Checked ${ago(i.last_synced_at)}` : i.status === "needs_reauth" ? ERRORS.invalid_grant : "Sync keeps failing. PingDesk will keep retrying."}</p>
+              {i.last_error_code && i.status !== "needs_reauth" && <p className="err-text">{ERRORS[i.last_error_code] ?? `Last error: ${i.last_error_code}`}</p>}
             </div>
             <div className="actions">
-              {i.status !== "active" && <Link className="outline sm" href="/api/google/connect" prefetch={false}>Reconnect</Link>}
+              {i.status === "needs_reauth" && <Link className="outline sm" href="/api/google/connect" prefetch={false}>Reconnect</Link>}
               <form action={disconnectInbox}><input type="hidden" name="inbox_id" value={i.id} />
                 <ConfirmButton className="linkbtn danger" message={`Disconnect ${i.email_address}? PingDesk will stop checking it and delete its alert history.`}>Disconnect</ConfirmButton>
               </form>
@@ -114,7 +116,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               return (
                 <li key={r.id}>
                   <div><b>{CATEGORY_LABEL[r.category] ?? r.category}</b><p>{r.subject || "(no subject)"}</p></div>
-                  <div className="meta"><span className={`pill ${st.tone}`}>{st.label}</span><small>{ago(r.received_at ?? r.created_at)}</small></div>
+                  <div className="meta"><span className={`pill ${st.tone}`}>{st.label}</span><small>{ago(r.received_at)}</small></div>
                 </li>
               );
             })}

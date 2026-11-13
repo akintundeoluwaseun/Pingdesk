@@ -5,7 +5,7 @@ A cloud-hosted, notification-only email-to-WhatsApp alert service. This reposito
 ## Current implementation
 - Sign up / sign in with Supabase Auth (email + password), session middleware, protected pages
 - Dashboard: setup checklist, connected inboxes with sync status, recent alerts with delivery status, disconnect (revokes the Google token)
-- Settings: WhatsApp number (international format), opt-in, time zone, per-category toggles, test alert
+- Settings: WhatsApp number verified with a 6-digit code, pause switch, time zone, per-category toggles, test alert; STOP/START replies handled
 - Gmail sync by `historyId` (falls back to a 24-hour window on first run or expired history), marks inboxes `needs_reauth` on revoked tokens
 - Sender check against `FIVERR_VERIFIED_SENDER_DOMAINS` plus DKIM/DMARC from Gmail's `Authentication-Results`
 - Delivery worker: claims queued alerts, honours opt-in and categories, logs every attempt, retries rate limits and server errors (up to 4 attempts)
@@ -21,7 +21,7 @@ A cloud-hosted, notification-only email-to-WhatsApp alert service. This reposito
 - Meta WhatsApp Cloud API template sender
 - WhatsApp webhook verification/status receiver
 - Protected internal sync route
-- SQL schema with RLS, inboxes, preferences, notifications, jobs and delivery logs
+- Database functions in Supabase for leasing inboxes and alerts, so overlapping runs never double-send
 
 ## Not production-ready yet
 - Google OAuth app verification / restricted-scope security assessment may be required for public launch.
@@ -39,7 +39,7 @@ Node.js 20+, npm, Supabase project, Google Cloud project and Meta developer/busi
 3. `npm install`
 4. `npm run dev`
 
-Run `supabase/schema.sql`, then `supabase/002_delivery_and_security.sql`, in the Supabase SQL Editor.
+The database is already set up in the **Animora** Supabase project. There is no SQL to run. See `supabase/README.md`.
 
 In Supabase → Authentication → URL Configuration, set the Site URL to your app URL and add `<app-url>/auth/callback` to the redirect URLs (used by the email confirmation link).
 
@@ -49,8 +49,9 @@ In Supabase → Authentication → URL Configuration, set the Site URL to your a
 - cron-job.org or another external scheduler
 - Vercel Cron (Hobby plans only allow daily runs, so use one of the above there)
 
-## WhatsApp template
-Create a **Utility** template with three body variables, e.g.:
+## WhatsApp templates
+1. **Verification** (category *Authentication*, with a "Copy code" button). Put its name in `META_WA_TEMPLATE_VERIFY`.
+2. **Alert** (category *Utility*) with three body variables. Put its name in `META_WA_TEMPLATE_ALERT`. For example:
 `New {{2}} in {{1}} at {{3}}. Open Fiverr to view it.`
 {{1}} is the inbox address, {{2}} the category ("Order update"), {{3}} the time in the user's time zone.
 
