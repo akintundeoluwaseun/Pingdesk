@@ -54,6 +54,22 @@ export async function GET(req: NextRequest) {
     return done("connected", email);
   } catch (e) {
     console.error("google callback", e);
-    return done("error", "Connecting Gmail failed. Try again.");
+    return done("error", explain(e));
   }
+}
+
+/** Turns Google and Supabase failures into a message that says what to fix. Never includes secrets. */
+function explain(e: unknown) {
+  const err = e as { message?: string; code?: unknown; response?: { status?: number; data?: { error?: unknown; error_description?: string } } };
+  const data = err?.response?.data;
+  const googleError = typeof data?.error === "string" ? data.error : "";
+  const msg = `${googleError} ${err?.message ?? ""}`;
+  if (/invalid_client|unauthorized_client/i.test(msg)) return "Google rejected the client ID or secret. Re-copy GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET into Vercel (no spaces), then redeploy.";
+  if (/redirect_uri_mismatch/i.test(msg)) return "The redirect URI doesn't match. In Google Cloud and in Vercel it must be exactly https://pingdesk-phi.vercel.app/api/google/callback";
+  if (/invalid_grant/i.test(msg)) return "That Google sign-in expired or was already used. Tap Connect Gmail again.";
+  if (/TOKEN_ENCRYPTION_KEY/.test(msg)) return "TOKEN_ENCRYPTION_KEY in Vercel must be exactly 64 characters of 0-9 and a-f. Fix it and redeploy.";
+  if (/service credentials|Invalid API key|JWT|apikey/i.test(msg)) return "Supabase rejected the server key. Check SUPABASE_SERVICE_ROLE_KEY in Vercel, then redeploy.";
+  if (err?.response?.status === 403 || /has not been used|is disabled|accessNotConfigured/i.test(msg)) return "Gmail API is off for this Google Cloud project. Enable it in the same project as your OAuth client.";
+  const code = googleError || (typeof err?.code === "string" ? err.code : "") || String(err?.response?.status ?? "unknown");
+  return `Connecting Gmail failed (${code.slice(0, 40)}). Try again.`;
 }
